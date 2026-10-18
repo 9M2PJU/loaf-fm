@@ -2581,6 +2581,10 @@ ApplicationWindow {
 
                                 readonly property bool isDropTarget: fileCardDelegate.item.is_dir && folderDropArea.containsDrag
 
+                                // Flips true once the delegate exists so cards spring in from 0.82.
+                                property bool entered: false
+                                Component.onCompleted: entered = true
+
                                 // Drop target for folders: accept drops + hover-to-open
                                 DropArea {
                                     id: folderDropArea
