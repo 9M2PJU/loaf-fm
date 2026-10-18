@@ -114,7 +114,22 @@ ApplicationWindow {
 
     // True while any modal dialog is open (arrow keys / shortcuts must not fire).
     readonly property bool anyModalOpen: inputModal.visible || propsModal.visible
-        || conflictModal.visible || passwordModal.visible || window.isEditingPath
+        || conflictModal.visible || passwordModal.visible || quickLook.visible
+        || commandModal.visible || window.isEditingPath
+
+    // Opens (or closes) the Quick Look preview for the current selection.
+    function toggleQuickLook() {
+        if (quickLook.visible) {
+            quickLook.close();
+            return;
+        }
+        if (activeView !== "files") return;
+        var items = gridContainer.getSelectedItems();
+        if (items.length === 0) return;
+        var it = items[items.length - 1];
+        var path = engine.is_searching_everywhere ? it.path : (engine.current_path + "/" + it.name);
+        quickLook.showFor(path);
+    }
 
     // True when a plain keystroke should be routed to the grid/list (no input
     // field focused, files view visible, no modal open).
@@ -133,6 +148,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+H"; onActivated: engine.toggle_show_hidden() }
     Shortcut { sequence: "Ctrl+L"; onActivated: window.startEditingPath() }
     Shortcut { sequence: "F2"; enabled: window.gridKeyboardReady; onActivated: window.renameSelected() }
+    // Stays enabled while the preview is open so Space toggles it shut again.
+    Shortcut { sequence: "Space"; enabled: quickLook.visible || window.gridKeyboardReady; onActivated: window.toggleQuickLook() }
     Shortcut { sequence: "Delete"; enabled: window.gridKeyboardReady; onActivated: window.trashSelected() }
     Shortcut { sequence: "Alt+Left"; enabled: engine.can_go_back; onActivated: engine.go_back() }
     Shortcut { sequence: "Alt+Right"; enabled: engine.can_go_forward; onActivated: engine.go_forward() }
@@ -3748,6 +3765,122 @@ ApplicationWindow {
             return sub;
         }
 
+        function appsForPath(itemPath) {
+            var recommended = [];
+            var recent = [];
+            var defaultId = "";
+            try {
+                recommended = JSON.parse(engine.open_with_apps(itemPath) || "[]");
+                recent = JSON.parse(engine.recent_open_with_apps() || "[]");
+                defaultId = engine.default_app_for(itemPath) || "";
+            } catch (e) {
+                recommended = [];
+                recent = [];
+            }
+            return { recommended: recommended, recent: recent, defaultId: defaultId };
+        }
+
+        function sectionHeader(text, icon, hasFollowing) {
+            if (!hasFollowing)
+                return null;
+            return { text: text, icon: icon, separatorBefore: true, enabled: false };
+        }
+
+        function openWithSubmenu(itemPath, recommended, defaultId, recent) {
+            var used = {};
+            var sub = [];
+            var suggested = [];
+
+            for (var i = 0; i < recommended.length; ++i) {
+                if (!recent || !recent.some(function(r) { return r.id === recommended[i].id; }))
+                    suggested.push(recommended[i]);
+            }
+
+            if (recent && recent.length > 0) {
+                for (var r = 0; r < recent.length; ++r) {
+                    var rec = recent[r];
+                    used[rec.id] = true;
+                    sub.push(appRow(rec, itemPath, rec.id === defaultId, "history"));
+                }
+                var header = sectionHeader("Suggested for this file", "sparkle", suggested.length > 0);
+                if (header)
+                    sub.push(header);
+            }
+
+            for (var j = 0; j < suggested.length; ++j) {
+                used[suggested[j].id] = true;
+                sub.push(appRow(suggested[j], itemPath, suggested[j].id === defaultId));
+            }
+
+            var others = [];
+            try {
+                others = JSON.parse(engine.all_open_with_apps() || "[]");
+            } catch (e) {
+                others = [];
+            }
+            var extra = [];
+            for (var k = 0; k < others.length; ++k) {
+                if (!used[others[k].id])
+                    extra.push(appRow(others[k], itemPath, others[k].id === defaultId));
+            }
+            if (extra.length > 0) {
+                sub.push({ text: "Other Applications…", icon: "list", separatorBefore: true, submenu: extra });
+            }
+            sub.push({ text: "Run Custom Command…", icon: "terminal", separatorBefore: true, action: function() {
+                contextMenu.close();
+                commandModal.showFor(itemPath);
+            } });
+            return sub;
+        }
+
+        function appRow(app, itemPath, isDefault, extraIcon) {
+            return {
+                text: app.name,
+                icon: extraIcon || "package",
+                checkable: isDefault,
+                checked: isDefault,
+                action: function() {
+                    contextMenu.close();
+                    engine.open_with_app(itemPath, app.id);
+                }
+            };
+        }
+
+        function setDefaultSubmenu(itemPath, recommended, defaultId, recent) {
+            var supported = [];
+
+            for (var i = 0; i < recommended.length; ++i) {
+                if (!recent || !recent.some(function(r) { return r.id === recommended[i].id; }))
+                    supported.push(recommended[i]);
+            }
+
+            var sub = [];
+            if (recent && recent.length > 0) {
+                for (var r = 0; r < recent.length; ++r)
+                    sub.push(defaultAppRow(recent[r], itemPath, defaultId, "history"));
+                var header = sectionHeader("Supported apps", "package", supported.length > 0);
+                if (header)
+                    sub.push(header);
+            }
+
+            for (var j = 0; j < supported.length; ++j)
+                sub.push(defaultAppRow(supported[j], itemPath, defaultId));
+            return sub;
+        }
+
+        function defaultAppRow(app, itemPath, defaultId, extraIcon) {
+            return {
+                text: app.name,
+                icon: extraIcon || "package",
+                checkable: true,
+                checked: app.id === defaultId,
+                action: function() {
+                    contextMenu.close();
+                    engine.set_default_app(itemPath, app.id);
+                }
+            };
+        }
+
         function buildItemModel() {
             var it = currentTargetItem;
             if (!it)
@@ -3791,6 +3924,21 @@ ApplicationWindow {
                 var dir = it.is_dir ? itemPath : (parentPath.length > 0 ? parentPath : engine.current_path);
                 engine.open_terminal(dir);
             } });
+
+            m.push({ text: "Quick Look", icon: "eye", shortcut: "Space", action: function() {
+                contextMenu.close();
+                window.toggleQuickLook();
+            } });
+
+            var appInfo = appsForPath(itemPath);
+            var withApps = openWithSubmenu(itemPath, appInfo.recommended, appInfo.defaultId, appInfo.recent);
+            if (withApps.length > 0) {
+                m.push({ text: "Open With", icon: "package", submenu: withApps });
+            }
+            var defaultApps = setDefaultSubmenu(itemPath, appInfo.recommended, appInfo.defaultId, appInfo.recent);
+            if (defaultApps.length > 0) {
+                m.push({ text: "Set Default Application", icon: "check-square", submenu: defaultApps });
+            }
 
             m.push({ text: "Cut", icon: "scissors", shortcut: "Ctrl+X", separatorBefore: true, action: function() {
                 engine.copy_items(JSON.stringify(paths), true);
@@ -3925,6 +4073,437 @@ ApplicationWindow {
             }
         }
     }
+
+    // ==========================================
+    // QUICK LOOK PREVIEW (Spacebar)
+    // ==========================================
+    LoafPopup {
+        id: quickLook
+        parent: Overlay.overlay
+
+        property var info: ({})
+        // Rendered once per open so scrolling never re-runs the highlighter.
+        property string previewHtml: ""
+
+        readonly property bool isCode: info.language !== undefined
+            && info.language !== "" && info.language !== "text"
+        readonly property bool isMarkdown: info.language === "markdown"
+
+        readonly property bool isAudio: info.kind === "media"
+            && /\.(mp3|flac|wav|ogg|oga|m4a|aac|opus|wma)$/i.test(String(info.name || ""))
+
+        function mediaIcon() {
+            return info.kind === "folder" ? "folder"
+                : (info.kind === "image" ? "image"
+                : (info.kind === "media" ? (isAudio ? "music" : "video") : "file-text"));
+        }
+
+        function fallbackIcon() {
+            return info.kind === "folder" ? "folder"
+                : (info.kind === "media" ? (isAudio ? "music" : "video") : "file");
+        }
+
+        width: Math.min(window.width - 160, 900)
+        height: Math.min(window.height - 160, 640)
+
+        function showFor(path) {
+            var raw = "{}";
+            try {
+                raw = engine.quick_look(path) || "{}";
+            } catch (e) {
+                raw = "{}";
+            }
+            info = JSON.parse(raw);
+            previewHtml = buildPreviewHtml();
+            openAt((window.width - width) / 2, (window.height - height) / 2);
+        }
+
+        // ---- markup helpers ---------------------------------------------------
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        function span(color, text, bold) {
+            return "<font color=\"" + color + "\"" + (bold ? " weight=\"bold\"" : "") + ">"
+                + escapeHtml(text) + "</font>";
+        }
+
+        function keywordSet(language) {
+            var common = "if else for while return function class const let var new this null true false import from export default switch case break continue do try catch finally throw async await typeof instanceof extends super static public private protected interface enum implements package void int float double char bool string bool";
+            switch (language) {
+            case "rust":
+                return "fn let mut const static struct enum impl trait pub use mod match if else for while loop return where ref self Self crate as in break continue unsafe move dyn box async await match Some None Ok Err";
+            case "python":
+                return "def class return if elif else for while import from as with try except finally raise lambda None True False and or not in is pass yield async await global nonlocal assert del";
+            case "javascript":
+                return common;
+            case "c":
+            case "cpp":
+                return common + " size_t typedef struct union enum namespace template typename operator using virtual override delete nullptr printf malloc free sizeof";
+            case "java":
+                return common + " public private protected abstract extends implements throws void int long double float boolean char byte short synchronized native final transient";
+            case "go":
+                return "package import func var const type struct interface map chan go defer if else for range return switch case break continue select fallthrough nil true false";
+            case "shell":
+            case "nix":
+                return "if then else elif fi for while do done case esac function return export local readonly source echo cd exit set unset local in with let rec inherit";
+            case "lua":
+                return "function local end if then elseif else for while do return break repeat until nil true false and or not in";
+            case "sql":
+                return "select from where insert into values update set delete create table drop alter index join inner left right outer on group by order having limit offset union distinct as and or not null primary key foreign references default";
+            case "css":
+                return "important media supports keyframes import charset font-face root inherit initial unset";
+            default:
+                return common;
+            }
+        }
+
+        function keywordsFor(language) {
+            var set = {};
+            var list = keywordSet(language).split(" ");
+            for (var i = 0; i < list.length; ++i) {
+                if (list[i].length > 0)
+                    set[list[i]] = true;
+            }
+            return set;
+        }
+
+        function highlightCode(code, language) {
+            var keywords = keywordsFor(language);
+            var commentColor = theme.outline;
+            var stringColor = theme.isDark ? "#8bd5a4" : "#0b7a3f";
+            var numberColor = theme.isDark ? "#f0b072" : "#a35b00";
+            var keywordColor = theme.primary;
+
+            // One pass over the source: the first alternative that matches at a
+            // position wins, so comments/strings are consumed whole.
+            var re = language === "python" || language === "shell" || language === "nix" || language === "yaml"
+                ? /(^#!.*|\/\/[^\n]*|#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/gm
+                : /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|<!--[\s\S]*?-->|#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/gm;
+
+            var out = "";
+            var last = 0;
+            var m;
+            while ((m = re.exec(code)) !== null) {
+                if (m.index > last)
+                    out += escapeHtml(code.substring(last, m.index));
+                if (m[1])
+                    out += span(commentColor, m[1]);
+                else if (m[2])
+                    out += span(stringColor, m[2]);
+                else if (m[3])
+                    out += span(numberColor, m[3]);
+                else if (m[4])
+                    out += keywords[m[4]] ? span(keywordColor, m[4], true) : escapeHtml(m[4]);
+                last = re.lastIndex;
+                if (m[0].length === 0)
+                    re.lastIndex++;
+            }
+            out += escapeHtml(code.substring(last));
+            return out;
+        }
+
+        function renderMarkdownInline(escaped) {
+            var out = escaped;
+            out = out.replace(/`([^`]+)`/g, "<font color=\"" + theme.primary + "\"><i>$1</i></font>");
+            out = out.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+            out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+            out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+                "<font color=\"" + theme.primary + "\" underline=\"single\">$1</font>");
+            return out;
+        }
+
+        function renderMarkdown(src) {
+            var lines = src.split("\n");
+            var html = "";
+            var inCode = false;
+            var headingColor = theme.primary;
+            for (var i = 0; i < lines.length; ++i) {
+                var line = lines[i];
+                var trimmed = line.trim();
+
+                if (/^```/.test(trimmed)) {
+                    inCode = !inCode;
+                    html += span(theme.outline, trimmed) + "<br>";
+                    continue;
+                }
+                if (inCode) {
+                    html += span(theme.secondaryContainerFg, line) + "<br>";
+                    continue;
+                }
+                if (trimmed.length === 0) {
+                    html += "<br>";
+                    continue;
+                }
+                var heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+                if (heading) {
+                    var level = heading[1].length;
+                    html += "<font color=\"" + headingColor + "\" weight=\"bold\" size=\""
+                        + (20 - level * 2) + "\">" + renderMarkdownInline(escapeHtml(heading[2])) + "</font><br>";
+                    continue;
+                }
+                if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+                    html += span(theme.outline, "──────────") + "<br>";
+                    continue;
+                }
+                if (/^>\s?/.test(trimmed)) {
+                    html += span(theme.textMuted, "│ " + renderMarkdownInline(escapeHtml(trimmed.replace(/^>\s?/, "")))) + "<br>";
+                    continue;
+                }
+                var bullet = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+                if (bullet) {
+                    var pad = bullet[1].length > 0 ? "&nbsp;".repeat(Math.min(bullet[1].length, 8)) : "";
+                    var marker = /^\d/.test(bullet[2]) ? bullet[2] + " " : "• ";
+                    html += pad + span(theme.primary, marker) + renderMarkdownInline(escapeHtml(bullet[3])) + "<br>";
+                    continue;
+                }
+                html += renderMarkdownInline(escapeHtml(line)) + "<br>";
+            }
+            return html;
+        }
+
+        function buildPreviewHtml() {
+            if (!info || info.kind !== "text")
+                return "";
+            if (info.language === "markdown")
+                return renderMarkdown(String(info.text || ""));
+            if (!isCode)
+                return escapeHtml(String(info.text || ""));
+            return "<pre style=\"margin:0px\">" + highlightCode(String(info.text || ""), info.language) + "</pre>";
+        }
+
+        // ---- content ----------------------------------------------------------
+
+        ColumnLayout {
+            width: quickLook.width - 2 * quickLook.contentPadding
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                LoafIcon {
+                    name: quickLook.mediaIcon()
+                    size: 22
+                    color: theme.primary
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: quickLook.info.name || ""
+                        color: theme.textMain
+                        font.pixelSize: 14
+                        font.bold: true
+                        elide: Text.ElideMiddle
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: (quickLook.info.size_str || "-") + "  ·  "
+                            + (quickLook.info.modified_str || "-") + "  ·  "
+                            + (quickLook.info.path || "")
+                        color: theme.textMuted
+                        font.pixelSize: 11
+                        elide: Text.ElideMiddle
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: theme.separator
+            }
+
+            // Image preview
+            Item {
+                visible: quickLook.info.kind === "image"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                Image {
+                    id: quickLookImage
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    source: quickLook.info.image_url || ""
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    asynchronous: true
+                    cache: true
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: quickLookImage.status === Image.Error
+                    text: "Could not render this image"
+                    color: theme.textMuted
+                    font.pixelSize: 13
+                }
+            }
+
+            // Text / code / markdown preview
+            Flickable {
+                id: previewFlick
+                visible: quickLook.info.kind === "text"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: Math.max(width, previewText.implicitWidth + 24)
+                contentHeight: Math.max(height, previewText.implicitHeight + 24)
+                boundsBehavior: Flickable.StopAtBounds
+
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                Text {
+                    id: previewText
+                    x: 12
+                    y: 12
+                    text: quickLook.previewHtml
+                    textFormat: Text.RichText
+                    color: theme.textMain
+                    font.pixelSize: 13
+                    // Code keeps its own line breaks and scrolls sideways;
+                    // prose wraps to the pane width.
+                    wrapMode: quickLook.isCode && !quickLook.isMarkdown ? Text.NoWrap : Text.Wrap
+                    width: quickLook.isCode && !quickLook.isMarkdown
+                        ? implicitWidth
+                        : previewFlick.width - 24
+                }
+            }
+
+            // Folder / media / unsupported
+            ColumnLayout {
+                visible: quickLook.info.kind !== "image" && quickLook.info.kind !== "text"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 8
+
+                Item { Layout.fillHeight: true }
+
+                LoafIcon {
+                    Layout.alignment: Qt.AlignHCenter
+                    name: quickLook.fallbackIcon()
+                    size: 46
+                    color: theme.textMuted
+                }
+
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillWidth: true
+                    text: quickLook.info.note || ""
+                    color: theme.textMuted
+                    font.pixelSize: 13
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+
+            Text {
+                visible: quickLook.info.truncated === true
+                text: "Preview truncated — showing the first part of the file"
+                color: theme.textMuted
+                font.pixelSize: 11
+            }
+        }
+    }
+
+    // ==========================================
+    // INPUT MODAL (New Folder, New File, Rename)
+    // ==========================================
+    LoafTextPrompt {
+        id: inputModal
+
+        property string mode: "new_folder"
+        property string targetItemName: ""
+
+        function showNewFolder() {
+            mode = "new_folder";
+            title = "New Folder";
+            label = "Enter a name for the new folder";
+            placeholder = "Folder name";
+            initialText = "New Folder";
+            confirmText = "Save";
+            selectBasename = false;
+            open();
+        }
+
+        function showNewFile() {
+            mode = "new_file";
+            title = "New File";
+            label = "Enter a name for the new file";
+            placeholder = "File name";
+            initialText = "Untitled.txt";
+            confirmText = "Save";
+            selectBasename = false;
+            open();
+        }
+
+        function showRename(oldName) {
+            mode = "rename";
+            targetItemName = oldName;
+            title = "Rename";
+            label = "Enter a new name";
+            initialText = oldName;
+            confirmText = "Rename";
+            selectBasename = true;
+            open();
+        }
+
+        onAccepted: function(text) {
+            var val = (text || "").trim();
+            if (val.length === 0)
+                return;
+            if (mode === "new_folder") {
+                engine.create_folder(engine.current_path, val);
+            } else if (mode === "new_file") {
+                engine.create_file(engine.current_path, val);
+            } else if (mode === "rename") {
+                engine.rename_item(engine.current_path, targetItemName, val);
+            }
+        }
+    }
+
+    // ==========================================
+    // CUSTOM COMMAND MODAL (Open With → Run Command)
+    // ==========================================
+    LoafTextPrompt {
+        id: commandModal
+
+        property string targetPath: ""
+        property bool rememberCommand: false
+
+        function showFor(path) {
+            targetPath = path;
+            title = "Run Custom Command";
+            label = "Command to open “" + (path.split("/").pop() || path) + "”. "
+                + "Use %f where the file should go (it is appended if omitted).";
+            placeholder = "mpv %f";
+            initialText = rememberCommand ? (engine.get_setting("openWithCustomCommand") || "") : "";
+            confirmText = "Run";
+            selectBasename = false;
+            open();
+        }
+
+        onAccepted: function(text) {
+            var cmd = (text || "").trim();
+            if (cmd.length === 0)
+                return;
+            engine.set_setting("openWithCustomCommand", cmd);
+            rememberCommand = true;
+            engine.run_custom_command(cmd, targetPath);
+        }
+    }
+
 
     // ==========================================
     // PROPERTIES MODAL

@@ -86,6 +86,27 @@ pub mod qobject {
         fn open_item(self: &LoafEngine, path: &QString);
 
         #[qinvokable]
+        fn open_with_apps(self: &LoafEngine, path: &QString) -> QString;
+
+        #[qinvokable]
+        fn all_open_with_apps(self: &LoafEngine) -> QString;
+
+        #[qinvokable]
+        fn open_with_app(self: &LoafEngine, path: &QString, app_id: &QString);
+
+        #[qinvokable]
+        fn default_app_for(self: &LoafEngine, path: &QString) -> QString;
+
+        #[qinvokable]
+        fn set_default_app(self: &LoafEngine, path: &QString, app_id: &QString);
+
+        #[qinvokable]
+        fn run_custom_command(self: &LoafEngine, command: &QString, path: &QString) -> bool;
+
+        #[qinvokable]
+        fn recent_open_with_apps(self: &LoafEngine) -> QString;
+
+        #[qinvokable]
         fn open_terminal(self: &LoafEngine, dir_path: &QString);
 
         #[qinvokable]
@@ -111,6 +132,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn get_item_info(self: &LoafEngine, path: &QString) -> QString;
+
+        #[qinvokable]
+        fn quick_look(self: &LoafEngine, path: &QString) -> QString;
 
         #[qinvokable]
         fn set_sort(self: Pin<&mut LoafEngine>, sort_by: &QString, ascending: bool);
@@ -187,7 +211,7 @@ use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -843,6 +867,11 @@ fn save_settings(map: &HashMap<String, String>) {
     }
 }
 
+fn store_settings(map: &HashMap<String, String>) {
+    save_settings(map);
+    *SETTINGS_STORE.lock().unwrap() = Some(map.clone());
+}
+
 fn get_bool_setting(key: &str, default: bool) -> bool {
     let settings = load_settings();
     match settings.get(key).map(|s| s.as_str()) {
@@ -855,8 +884,7 @@ fn get_bool_setting(key: &str, default: bool) -> bool {
 fn set_bool_setting(key: &str, value: bool) {
     let mut map = load_settings();
     map.insert(key.to_string(), value.to_string());
-    save_settings(&map);
-    *SETTINGS_STORE.lock().unwrap() = Some(map);
+    store_settings(&map);
 }
 
 fn find_in_store(keyword: &str, rel: &str) -> Option<String> {
@@ -1695,6 +1723,737 @@ fn system_icon_for_file(path: &Path, is_dir: bool) -> &'static str {
         _ => "text-x-generic",
     }
 }
+
+// ============================================================
+// "Open With" support
+// ============================================================
+
+/// One parsed `*.desktop` entry (only the `[Desktop Entry]` group is read).
+#[derive(Clone)]
+struct DesktopApp {
+    /// Desktop file id (filename without `.desktop`).
+    id: String,
+    name: String,
+    exec: String,
+    /// Absolute path of the `.desktop` file.
+    desktop_path: PathBuf,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AppEntry {
+    pub id: String,
+    pub name: String,
+}
+
+static APPS_CACHE: Mutex<Option<Vec<DesktopApp>>> = Mutex::new(None);
+
+fn desktop_app_dirs() -> Vec<PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        PathBuf::from(&home).join(".local/share/applications"),
+        PathBuf::from(&home).join(".local/share/flatpak/exports/share/applications"),
+        PathBuf::from("/run/current-system/sw/share/applications"),
+        PathBuf::from("/var/lib/flatpak/exports/share/applications"),
+        PathBuf::from("/usr/local/share/applications"),
+        PathBuf::from("/usr/share/applications"),
+    ];
+    candidates.into_iter().filter(|d| d.is_dir()).collect()
+}
+
+/// Current locale codes, most specific first (`de_DE`, then `de`).
+fn locale_chain() -> Vec<String> {
+    let raw = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default();
+    let raw = raw.split(['.', '@']).next().unwrap_or("").replace('-', "_");
+    let mut chain = Vec::new();
+    if !raw.is_empty() {
+        chain.push(raw.clone());
+        if let Some((lang, _)) = raw.split_once('_') {
+            chain.push(lang.to_string());
+        }
+    }
+    chain
+}
+
+fn parse_desktop_file(path: &Path) -> Option<DesktopApp> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut in_group = false;
+    let mut is_app = false;
+    let mut hidden = false;
+    let mut name = String::new();
+    let mut localized: Vec<(String, String)> = Vec::new();
+    let mut exec = String::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') {
+            in_group = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_group {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else { continue };
+        let key = key.trim();
+        let value = value.trim().to_string();
+        match key {
+            "Type" => is_app = value.eq_ignore_ascii_case("Application"),
+            "Hidden" | "NoDisplay" => hidden = value.eq_ignore_ascii_case("true"),
+            "Exec" => exec = value,
+            "Name" => name = value,
+            _ => {
+                if let Some(loc) = key.strip_prefix("Name[") {
+                    if let Some(code) = loc.strip_suffix(']') {
+                        localized.push((code.to_string(), value));
+                    }
+                }
+            }
+        }
+    }
+
+    if !is_app || hidden || exec.is_empty() {
+        return None;
+    }
+
+    // Prefer a translated name matching the current locale, then any localized one.
+    let mut display = String::new();
+    for code in locale_chain() {
+        if let Some((_, v)) = localized.iter().find(|(c, _)| c.eq_ignore_ascii_case(&code)) {
+            display = v.clone();
+            break;
+        }
+    }
+    if display.is_empty() {
+        display = localized.first().map(|(_, v)| v.clone()).unwrap_or_default();
+    }
+    if display.is_empty() {
+        display = name;
+    }
+    if display.is_empty() {
+        return None;
+    }
+
+    Some(DesktopApp {
+        id: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        name: display,
+        exec,
+        desktop_path: path.to_path_buf(),
+    })
+        .map(|mut app| {
+            if app.id.ends_with(".desktop") {
+                app.id.truncate(app.id.len() - ".desktop".len());
+            }
+            app
+        })
+}
+
+fn all_desktop_apps() -> Vec<DesktopApp> {
+    let mut guard = APPS_CACHE.lock().unwrap();
+    if let Some(cached) = guard.as_ref() {
+        return cached.clone();
+    }
+
+    let mut apps: Vec<DesktopApp> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for dir in desktop_app_dirs() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
+                continue;
+            }
+            let Some(app) = parse_desktop_file(&path) else { continue };
+            // Desktop IDs are globally unique: the first directory in the search
+            // order wins, which matches how the XDG lookup works.
+            if !seen.insert(app.id.clone()) {
+                continue;
+            }
+            apps.push(app);
+        }
+    }
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    *guard = Some(apps.clone());
+    apps
+}
+
+/// MIME type of `path`, with a small extension table as fallback when
+/// `xdg-mime` is unavailable.
+fn mime_type_for_path(path: &Path) -> String {
+    if path.is_dir() {
+        return "inode/directory".to_string();
+    }
+    if let Some(mime) = run_cmd_stdout("xdg-mime", &["query", "filetype", &path.to_string_lossy()]) {
+        if !mime.is_empty() && !mime.contains(' ') {
+            return mime;
+        }
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "txt" => "text/plain",
+        "md" => "text/markdown",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "mp3" => "audio/mpeg",
+        "flac" => "audio/flac",
+        "mp4" => "video/mp4",
+        "mkv" => "video/x-matroska",
+        "webm" => "video/webm",
+        "zip" => "application/zip",
+        "html" | "htm" => "text/html",
+        "json" => "application/json",
+        _ => "",
+    }
+    .to_string()
+}
+
+/// True when a `MimeType=` entry from a desktop file covers `mime` (with a
+/// little tolerance for the usual alias spellings).
+fn mime_covers(declared: &str, mime: &str) -> bool {
+    let declared = declared.trim().to_lowercase();
+    let mime = mime.trim().to_lowercase();
+    if declared.is_empty() || mime.is_empty() {
+        return false;
+    }
+    if declared == mime || declared == "*/*" {
+        return true;
+    }
+    // Wildcard types such as "image/*" or "text/*".
+    if let Some(prefix) = declared.strip_suffix("/*") {
+        return mime.split('/').next() == Some(prefix);
+    }
+    // Common aliases seen in desktop files.
+    let aliases: [(&str, &str); 6] = [
+        ("image/jpg", "image/jpeg"),
+        ("image/pjpeg", "image/jpeg"),
+        ("application/x-zip-compressed", "application/zip"),
+        ("application/x-7z-compressed", "application/x-7z"),
+        ("text/xml", "application/xml"),
+        ("text/markdown", "text/x-markdown"),
+    ];
+    aliases.iter().any(|(a, b)| {
+        (declared == *a && mime == *b) || (declared == *b && mime == *a)
+    })
+}
+
+/// How many recently used apps are remembered for the Open With menus.
+const RECENT_APPS_LIMIT: usize = 8;
+/// Settings key holding the recent app list.
+const RECENT_APPS_KEY: &str = "recentOpenApps";
+/// Field separator inside the stored list: a control character, so it can
+/// never collide with a desktop id or a shell command.
+const RECENT_APPS_SEP: &str = "\u{1}";
+
+/// Appends `app_id` to the most-recently-used list stored in the settings,
+/// de-duplicating and keeping the newest entry first.
+///
+/// Accepts either a desktop id (`firefox`) or a raw command line (recorded as
+/// `cmd:<command>`), so custom commands are tracked too.
+fn push_recent_app(app_id: &str) {
+    if app_id.is_empty() {
+        return;
+    }
+
+    let mut settings = load_settings();
+    let existing = settings.get(RECENT_APPS_KEY).cloned().unwrap_or_default();
+    let mut list: Vec<String> = existing
+        .split(RECENT_APPS_SEP)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    list.retain(|id| id != app_id);
+    list.insert(0, app_id.to_string());
+    list.truncate(RECENT_APPS_LIMIT);
+
+    settings.insert(RECENT_APPS_KEY.to_string(), list.join(RECENT_APPS_SEP));
+    store_settings(&settings);
+}
+
+/// The remembered apps, most recent first, resolved to `{id, name}` entries.
+///
+/// Desktop ids are matched against the installed entries, so an app that has
+/// since been uninstalled drops out of the list. `cmd:` entries have no
+/// desktop file to resolve against and are skipped.
+fn recent_open_with_apps() -> Vec<AppEntry> {
+    let settings = load_settings();
+    let stored = settings.get(RECENT_APPS_KEY).cloned().unwrap_or_default();
+    if stored.is_empty() {
+        return Vec::new();
+    }
+
+    let installed = all_desktop_apps();
+    let mut out: Vec<AppEntry> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for id in stored
+        .split(RECENT_APPS_SEP)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        if !seen.insert(id.to_string()) {
+            continue;
+        }
+        if id.starts_with("cmd:") {
+            continue;
+        }
+        if let Some(app) = installed.iter().find(|a| a.id == id) {
+            out.push(AppEntry {
+                id: app.id.clone(),
+                name: app.name.clone(),
+            });
+        }
+    }
+    out
+}
+
+/// Placeholders a user-typed command may use for the selected file.
+const CUSTOM_COMMAND_PLACEHOLDERS: [&str; 4] = ["%f", "%F", "%u", "%U"];
+
+/// True when the command uses shell syntax (pipes, redirection, subshells).
+/// Such commands are run verbatim: appending the file would break them.
+fn uses_shell_syntax(command: &str) -> bool {
+    command.contains(['|', '&', ';', '>', '<', '`', '$', '(', ')', '{', '}', '*', '?', '\n'])
+}
+
+/// Substitutes `path` into a user-typed command and runs it through `sh -c`.
+///
+/// Accepts the same field codes desktop entries use. A plain command with no
+/// field code gets the quoted path appended, so both `mpv` and `mpv %f` work.
+fn substitute_command_path(command: &str, path: &Path) -> String {
+    let quoted = format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"));
+    let mut out = command.to_string();
+    let mut replaced = false;
+    for placeholder in CUSTOM_COMMAND_PLACEHOLDERS {
+        if out.contains(placeholder) {
+            out = out.replace(placeholder, &quoted);
+            replaced = true;
+        }
+    }
+    if !replaced && !uses_shell_syntax(&out) {
+        out.push(' ');
+        out.push_str(&quoted);
+    }
+    out
+}
+
+/// Replaces the desktop `Exec` field codes (`%f`, `%U`, `%i`, ...) with `path`.
+///
+/// The file argument is substituted as a sentinel token rather than the raw
+/// path, so a name containing spaces stays a single argument as the desktop
+/// entry spec requires.
+fn expand_exec(exec: &str, path: &Path) -> Vec<String> {
+    const FIELD: &str = "\u{1}field\u{1}";
+    const PCT: &str = "\u{2}pct\u{2}";
+    let p = path.to_string_lossy().to_string();
+    // Flatpak exports escape field codes as `@@u`/`@@` (it turns them back into
+    // `%u` itself); unescape those so the file still gets passed through.
+    let prepared = exec.replace("@@", PCT);
+    let substituted: String = prepared
+        .replace("%F", FIELD)
+        .replace("%U", FIELD)
+        .replace("%D", FIELD)
+        .replace("%N", FIELD)
+        .replace("%V", FIELD)
+        .replace("%M", FIELD)
+        .replace("%f", FIELD)
+        .replace("%u", FIELD)
+        .replace("%d", FIELD)
+        .replace("%n", FIELD)
+        .replace("%v", FIELD)
+        .replace("%m", FIELD)
+        .replace("%i", "--icon")
+        .replace("%c", "")
+        .replace("%k", "")
+        .replace("%%", "%");
+
+    // Shell-like tokenizer: honours single/double quotes and backslash escapes.
+    let mut tokens: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in substituted.chars() {
+        if escaped {
+            cur.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if quote != Some('\'') => escaped = true,
+            '"' | '\'' => match quote {
+                Some(q) if q == ch => quote = None,
+                None => quote = Some(ch),
+                _ => cur.push(ch),
+            },
+            c if c.is_whitespace() && quote.is_none() => {
+                if !cur.is_empty() {
+                    tokens.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.is_empty() {
+        tokens.push(cur);
+    }
+
+    // Any argument carrying the field code is the file itself, quoted or not.
+    tokens
+        .into_iter()
+        .filter_map(|token| {
+            if token.contains(FIELD) {
+                Some(p.clone())
+            } else if token.is_empty() {
+                None
+            } else {
+                Some(token.replace(PCT, "%"))
+            }
+        })
+        .collect()
+}
+
+/// MIME types a desktop file declares support for (from its `MimeType=` key).
+fn declared_mimes(desktop_path: &Path) -> Vec<String> {
+    let Ok(content) = fs::read_to_string(desktop_path) else { return Vec::new() };
+    let mut in_group = false;
+    let mut mimes = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_group = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_group {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("MimeType=") {
+            mimes.extend(value.split(';').map(|m| m.trim().to_string()).filter(|m| !m.is_empty()));
+        }
+    }
+    mimes
+}
+
+/// Reads the current default for `mime` from `xdg-mime`, falling back to
+/// `~/.config/mimeapps.list`. Returns the desktop file name (e.g.
+/// `firefox.desktop`).
+fn default_app_id(mime: &str) -> Option<String> {
+    if let Some(id) = run_cmd_stdout("xdg-mime", &["query", "default", mime]) {
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    let content = fs::read_to_string(mimeapps_list_path()).ok()?;
+    let mut in_group = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_group = line == "[Default Applications]";
+            continue;
+        }
+        if !in_group {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else { continue };
+        if key.trim().eq_ignore_ascii_case(mime) {
+            let id = value.trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Strips the `.desktop` suffix so a mimeapps.list value can be compared with
+/// a parsed desktop file id.
+fn desktop_id_of(desktop_file_name: &str) -> &str {
+    desktop_file_name
+        .strip_suffix(".desktop")
+        .unwrap_or(desktop_file_name)
+}
+
+/// Records `app_id` as the default for `mime` in `~/.config/mimeapps.list`,
+/// keeping the file's existing entries and comments intact.
+fn set_default_app_id(mime: &str, app_id: &str) {
+    let desktop_name = if app_id.ends_with(".desktop") {
+        app_id.to_string()
+    } else {
+        format!("{}.desktop", app_id)
+    };
+
+    // Preferred: let xdg-mime update every relevant mimeapps.list itself.
+    if ran_ok(std::process::Command::new("xdg-mime").arg("default").arg(&desktop_name).arg(mime).status()) {
+        return;
+    }
+
+    let list_path = mimeapps_list_path();
+    if let Some(parent) = list_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let existing = fs::read_to_string(&list_path).unwrap_or_default();
+    let mut lines: Vec<String> = existing.lines().map(|l| l.to_string()).collect();
+    if lines.is_empty() {
+        lines.push("[Default Applications]".to_string());
+    }
+
+    let mut in_group = false;
+    let mut replaced = false;
+    for line in lines.iter_mut() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_group = trimmed == "[Default Applications]";
+            continue;
+        }
+        if !in_group || !trimmed.contains('=') {
+            continue;
+        }
+        let key = trimmed.split_once('=').map(|(k, _)| k.trim()).unwrap_or("");
+        if key.eq_ignore_ascii_case(mime) {
+            if replaced {
+                // Drop duplicate entries for the same MIME type.
+                *line = String::new();
+                continue;
+            }
+            *line = format!("{}={}", mime, desktop_name);
+            replaced = true;
+        }
+    }
+    if !replaced {
+        // Append to the end of the [Default Applications] group, creating the
+        // group at the file end when it is missing.
+        let insert_at = lines
+            .iter()
+            .position(|l| l.trim() == "[Default Applications]")
+            .map(|i| {
+                let next_group = lines[i + 1..]
+                    .iter()
+                    .position(|l| l.trim().starts_with('['))
+                    .map(|off| i + 1 + off)
+                    .unwrap_or(lines.len());
+                next_group
+            });
+        let entry = format!("{}={}", mime, desktop_name);
+        match insert_at {
+            Some(idx) => lines.insert(idx, entry),
+            None => {
+                lines.push(String::new());
+                lines.push("[Default Applications]".to_string());
+                lines.push(entry);
+            }
+        }
+    }
+
+    let _ = fs::write(&list_path, lines.join("\n"));
+}
+
+// ============================================================
+// Quick Look (inline preview) support
+// ============================================================
+
+/// Upper bound on how much of a text file is handed to the preview pane.
+const QUICKLOOK_MAX_BYTES: usize = 256 * 1024;
+
+#[derive(Serialize)]
+pub struct QuickLook {
+    pub name: String,
+    pub path: String,
+    /// image | text | markdown | media | folder | none
+    pub kind: String,
+    /// Highlighting hint for the QML side (empty for plain text).
+    pub language: String,
+    pub text: String,
+    pub truncated: bool,
+    pub image_url: String,
+    pub size_str: String,
+    pub modified_str: String,
+    /// Short line shown when there is nothing to preview.
+    pub note: String,
+}
+
+/// Maps a file extension to a highlighting language (see the QML highlighter).
+fn preview_language(ext: &str) -> &'static str {
+    match ext {
+        "md" | "markdown" => "markdown",
+        "rs" => "rust",
+        "py" | "pyw" => "python",
+        "js" | "mjs" | "cjs" | "ts" | "jsx" | "tsx" => "javascript",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" => "cpp",
+        "java" | "kt" | "kts" | "scala" => "java",
+        "go" => "go",
+        "sh" | "bash" | "zsh" | "fish" | "nu" | "ps1" | "bat" | "cmd" => "shell",
+        "nix" => "nix",
+        "lua" => "lua",
+        "sql" => "sql",
+        "html" | "htm" | "xml" | "svg" | "qml" | "xhtml" => "markup",
+        "css" | "scss" | "sass" | "less" => "css",
+        "json" | "json5" | "jsonc" => "json",
+        "yaml" | "yml" | "toml" | "ini" | "conf" | "cfg" | "properties" => "yaml",
+        "rb" | "php" | "swift" | "hs" | "ml" | "ex" | "exs" | "erl" | "clj" | "zig" | "dart" | "r" | "jl" => "c_like",
+        _ => "text",
+    }
+}
+
+fn is_media_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "mp4" | "mkv" | "webm" | "mov" | "avi" | "flv" | "wmv" | "m4v" | "mpg" | "mpeg"
+            | "mp3" | "flac" | "wav" | "ogg" | "oga" | "m4a" | "aac" | "opus" | "wma"
+    )
+}
+
+/// Reads at most `QUICKLOOK_MAX_BYTES` and reports whether the head of the file
+/// looks binary (a NUL byte in the first 8 KiB is the usual heuristic).
+fn read_preview_text(path: &Path) -> (String, bool, bool) {
+    let Ok(bytes) = fs::read(path) else {
+        return (String::new(), false, false);
+    };
+    let truncated = bytes.len() > QUICKLOOK_MAX_BYTES;
+    let slice = if truncated { &bytes[..QUICKLOOK_MAX_BYTES] } else { &bytes[..] };
+    let binary = slice.iter().take(8192).any(|b| *b == 0);
+    if binary {
+        return (String::new(), truncated, true);
+    }
+    (String::from_utf8_lossy(slice).to_string(), truncated, false)
+}
+
+fn count_dir_entries(path: &Path) -> usize {
+    fs::read_dir(path)
+        .map(|entries| entries.flatten().count())
+        .unwrap_or(0)
+}
+
+/// Builds everything the preview pane needs for `path`.
+fn quick_look_data(path: &Path) -> QuickLook {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let meta = fs::metadata(path).ok();
+    let size_str = meta
+        .as_ref()
+        .filter(|_| !path.is_dir())
+        .map(|m| format_size(m.len()))
+        .unwrap_or_else(|| "-".to_string());
+    let modified_str = meta
+        .as_ref()
+        .map(|m| format_modified_time(m).1)
+        .unwrap_or_else(|| "-".to_string());
+
+    let mut out = QuickLook {
+        name,
+        path: path.to_string_lossy().to_string(),
+        kind: "none".to_string(),
+        language: String::new(),
+        text: String::new(),
+        truncated: false,
+        image_url: String::new(),
+        size_str,
+        modified_str,
+        note: "No preview available".to_string(),
+    };
+
+    if path.is_dir() {
+        let entries = count_dir_entries(path);
+        out.kind = "folder".into();
+        out.note = format!(
+            "Folder · {} item{}",
+            entries,
+            if entries == 1 { "" } else { "s" }
+        );
+        return out;
+    }
+
+    if meta.is_none() {
+        out.kind = "none".into();
+        out.note = "This item no longer exists".to_string();
+        return out;
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Images: reuse the thumbnail pipeline (natively renderable files are shown
+    // full-size, the rest through the generated cache entry).
+    if is_picture_format(&ext) {
+        out.kind = "image".into();
+        out.image_url = resolve_thumbnail_url(path, false);
+        out.note = String::new();
+        return out;
+    }
+
+    if is_media_ext(&ext) {
+        out.kind = "media".into();
+        out.note = "Media file · press Enter to open it in your default player".to_string();
+        return out;
+    }
+
+    if ext == "pdf" || ext == "epub" || ext == "mobi" {
+        out.kind = "none".into();
+        out.note = "No inline preview · press Enter to open it".to_string();
+        return out;
+    }
+
+    let language = preview_language(&ext);
+    if language != "text" {
+        let (text, truncated, binary) = read_preview_text(path);
+        if binary {
+            out.note = "Binary file · no text preview".to_string();
+            return out;
+        }
+        out.kind = "text".into();
+        out.language = language.to_string();
+        out.text = text;
+        out.truncated = truncated;
+        out.note = String::new();
+        return out;
+    }
+
+    // Plain text (or an extension-less file such as a config or a script).
+    let (text, truncated, binary) = read_preview_text(path);
+    if binary {
+        out.kind = "none".into();
+        out.note = "Binary file · no text preview".to_string();
+        return out;
+    }
+    out.kind = "text".into();
+    out.language = "text".to_string();
+    out.text = text;
+    out.truncated = truncated;
+    out.note = String::new();
+    out
+}
+
+fn mimeapps_list_path() -> PathBuf {
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg).join("mimeapps.list");
+        }
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+
+    PathBuf::from(home).join(".config/mimeapps.list")
+}
+
 
 fn record_dir_visit(path: &str) {
     let mut guard = VISIT_COUNTS.lock().unwrap();
@@ -2692,6 +3451,128 @@ impl qobject::LoafEngine {
         let _ = std::process::Command::new("xdg-open").arg(&p).spawn();
     }
 
+    
+    pub fn open_with_apps(&self, path: &QString) -> QString {
+        let target = PathBuf::from(path.to_string());
+        let mime = mime_type_for_path(&target);
+
+        let mut recommended: Vec<DesktopApp> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let apps = all_desktop_apps();
+        if !mime.is_empty() {
+            let default = default_app_id(&mime).map(|d| desktop_id_of(&d).to_string());
+            for app in apps.iter() {
+                if declared_mimes(&app.desktop_path)
+                    .iter()
+                    .any(|m| mime_covers(m, &mime))
+                {
+                    seen.insert(app.id.clone());
+                    recommended.push(app.clone());
+                }
+            }
+            if let Some(default_id) = default {
+                if let Some(pos) = recommended.iter().position(|a| a.id == default_id) {
+                    let app = recommended.remove(pos);
+                    recommended.insert(0, app);
+                }
+            }
+        }
+
+        let json = serde_json::to_string(
+            &recommended
+                .iter()
+                .map(|a| AppEntry { id: a.id.clone(), name: a.name.clone() })
+                .collect::<Vec<AppEntry>>(),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
+        QString::from(&json)
+    }
+
+    pub fn all_open_with_apps(&self) -> QString {
+        let json = serde_json::to_string(
+            &all_desktop_apps()
+                .iter()
+                .map(|a| AppEntry { id: a.id.clone(), name: a.name.clone() })
+                .collect::<Vec<AppEntry>>(),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
+        QString::from(&json)
+    }
+
+    pub fn recent_open_with_apps(&self) -> QString {
+        let json = serde_json::to_string(&recent_open_with_apps())
+            .unwrap_or_else(|_| "[]".to_string());
+        QString::from(&json)
+    }
+
+    pub fn open_with_app(&self, path: &QString, app_id: &QString) {
+        let target = PathBuf::from(path.to_string());
+        let id = app_id.to_string();
+        let Some(app) = all_desktop_apps().into_iter().find(|a| a.id == id) else {
+            eprintln!("loaf: no desktop entry found for app id '{}'", id);
+            return;
+        };
+        push_recent_app(&id);
+        let args = expand_exec(&app.exec, &target);
+        if args.is_empty() {
+            return;
+        }
+        let mut cmd = std::process::Command::new(&args[0]);
+        cmd.args(&args[1..]);
+        if let Some(parent) = target.parent() {
+            if parent.is_dir() && !target.is_dir() {
+                cmd.current_dir(parent);
+            }
+        }
+        if let Err(err) = cmd.spawn() {
+            eprintln!("loaf: could not launch '{}': {}", app.name, err);
+        }
+    }
+
+    pub fn default_app_for(&self, path: &QString) -> QString {
+        let mime = mime_type_for_path(&PathBuf::from(path.to_string()));
+        let id = if mime.is_empty() {
+            String::new()
+        } else {
+            default_app_id(&mime)
+                .map(|name| desktop_id_of(&name).to_string())
+                .unwrap_or_default()
+        };
+        QString::from(&id)
+    }
+
+    pub fn run_custom_command(&self, command: &QString, path: &QString) -> bool {
+        let command = command.to_string();
+        let trimmed = command.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+
+        push_recent_app(&format!("cmd:{}", trimmed));
+        let expanded = substitute_command_path(trimmed, &PathBuf::from(path.to_string()));
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&expanded)
+            .spawn()
+        {
+            Ok(_) => true,
+            Err(err) => {
+                eprintln!("loaf: could not run custom command: {}", err);
+                false
+            }
+        }
+    }
+
+    pub fn set_default_app(&self, path: &QString, app_id: &QString) {
+        let mime = mime_type_for_path(&PathBuf::from(path.to_string()));
+        let app_id = app_id.to_string();
+        if mime.is_empty() {
+            return;
+        }
+        set_default_app_id(&mime, &app_id);
+        *APPS_CACHE.lock().unwrap() = None;
+    }
+
     pub fn open_terminal(&self, dir_path: &QString) {
         let dir = dir_path.to_string();
         if Path::new("/etc/profiles/per-user/m_uvex/bin/kitty").exists() {
@@ -3131,6 +4012,13 @@ impl qobject::LoafEngine {
         is_archive_path(&p)
     }
 
+    
+    pub fn quick_look(&self, path: &QString) -> QString {
+        let data = quick_look_data(&PathBuf::from(path.to_string()));
+        let json = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_string());
+        QString::from(&json)
+    }
+
     pub fn get_item_info(&self, path: &QString) -> QString {
         let p = PathBuf::from(path.to_string());
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
@@ -3228,8 +4116,7 @@ impl qobject::LoafEngine {
             return;
         }
         map.insert(k, v);
-        save_settings(&map);
-        *SETTINGS_STORE.lock().unwrap() = Some(map);
+        store_settings(&map);
     }
 
     pub fn mount_drive(mut self: Pin<&mut Self>, device: &QString) {
