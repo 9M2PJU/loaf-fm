@@ -101,9 +101,16 @@ To uninstall:
 ./uninstall.sh
 ```
 
-### 4. AppDir / AppImage
+### 4. Standalone AppImage (Universal)
 
-Extract the AppDir bundle and execute:
+The self-contained single-file executable runs out of the box with zero dependencies:
+
+```bash
+chmod +x Loaf-v0.1.0-x86_64.AppImage
+./Loaf-v0.1.0-x86_64.AppImage
+```
+
+Or extract the AppDir bundle:
 
 ```bash
 tar -xzf loaf-v0.1.0-AppDir.tar.gz
