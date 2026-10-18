@@ -24,6 +24,7 @@
 
 Loaf is designed to replace crowded, outdated file managers with an interface that looks modern, runs fast, and doesn't compromise on functionality. Built using **Rust** for native system performance and **Qt6 Quick / QML** for fluid Material 3 Expressive animations.
 > Note: Loaf is still at a very alpha stage, expect bugs or missing features. Contributions of any kind are very welcome!
+> Another Note: I'm kinda in need for an app icon for Loaf, if you're willing to help please DM me on discord; @m_uvex . Thank you!
 
 ---
 
