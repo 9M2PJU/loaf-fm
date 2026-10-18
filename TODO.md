@@ -82,6 +82,16 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 
 ---
 
+## CLI & Runtime Options
+- [ ] **Robust CLI Argument Parser**: Command-line interface flags for startup behavior and diagnostics:
+  - `-v` / `--verbose`: Detailed stdout/stderr logging (file scanning, IPC, thumbnail generation).
+  - `-p` / `--path <dir>`: Launch directly into a specific directory.
+  - `-m` / `--mini`: Start in ultra-compact Mini mode.
+  - `--version`: Display version information and exit.
+  - `-h` / `--help`: Print CLI usage instructions and flags.
+
+---
+
 ## Integrations & Context Actions
 - [ ] **Device Sharing (LocalSend, KDE Connect & Bluetooth)**: Send selected files directly to local devices via LocalSend, KDE Connect, or Bluetooth file transfer.
 - [ ] **Send by Link**: Upload file to a free hosting service (e.g. Catbox / GoFile), generate and shorten a shareable download link, and copy it to clipboard.
