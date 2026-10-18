@@ -353,6 +353,61 @@ fn read_system_hostname() -> String {
     "PC".to_string()
 }
 
+fn normalize_wallpaper_colors(content: &str) -> String {
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(content) else {
+        return content.to_string();
+    };
+
+    if val.get("primary").and_then(|v| v.as_str()).is_some()
+        && val.get("background").and_then(|v| v.as_str()).is_some()
+    {
+        return content.to_string();
+    }
+
+    if let Some(colors) = val.get("colors") {
+        let special = val.get("special");
+        let bg = special.and_then(|s| s.get("background")).and_then(|v| v.as_str())
+            .or_else(|| colors.get("color0").and_then(|v| v.as_str()))
+            .unwrap_or("#121214");
+        let fg = special.and_then(|s| s.get("foreground")).and_then(|v| v.as_str())
+            .or_else(|| colors.get("color7").and_then(|v| v.as_str()))
+            .unwrap_or("#e4e2de");
+        let primary = colors.get("color4").and_then(|v| v.as_str())
+            .or_else(|| colors.get("color1").and_then(|v| v.as_str()))
+            .unwrap_or("#a3c9fe");
+        let secondary = colors.get("color2").and_then(|v| v.as_str())
+            .or_else(|| colors.get("color6").and_then(|v| v.as_str()))
+            .unwrap_or("#89b4fa");
+        let surface_container = colors.get("color0").and_then(|v| v.as_str()).unwrap_or("#18191a");
+        let surface_container_high = colors.get("color8").and_then(|v| v.as_str()).unwrap_or("#282a2b");
+        let outline = colors.get("color8").and_then(|v| v.as_str()).unwrap_or("#8d9199");
+
+        let mut out = serde_json::Map::new();
+        out.insert("primary".to_string(), serde_json::json!(primary));
+        out.insert("on_primary".to_string(), serde_json::json!(bg));
+        out.insert("primary_container".to_string(), serde_json::json!(primary));
+        out.insert("on_primary_container".to_string(), serde_json::json!(fg));
+        out.insert("secondary_container".to_string(), serde_json::json!(secondary));
+        out.insert("on_secondary_container".to_string(), serde_json::json!(fg));
+        out.insert("background".to_string(), serde_json::json!(bg));
+        out.insert("on_background".to_string(), serde_json::json!(fg));
+        out.insert("surface".to_string(), serde_json::json!(bg));
+        out.insert("on_surface".to_string(), serde_json::json!(fg));
+        out.insert("on_surface_variant".to_string(), serde_json::json!(fg));
+        out.insert("surface_container".to_string(), serde_json::json!(surface_container));
+        out.insert("surface_container_high".to_string(), serde_json::json!(surface_container_high));
+        out.insert("surface_container_highest".to_string(), serde_json::json!(surface_container_high));
+        out.insert("surface_container_low".to_string(), serde_json::json!(surface_container));
+        out.insert("surface_container_lowest".to_string(), serde_json::json!(bg));
+        out.insert("outline".to_string(), serde_json::json!(outline));
+        out.insert("outline_variant".to_string(), serde_json::json!(surface_container_high));
+
+        return serde_json::to_string(&out).unwrap_or_else(|_| content.to_string());
+    }
+
+    content.to_string()
+}
+
 /// Returns (source_path, content, mtime_secs) for the first readable color source.
 fn read_wallpaper_colors_source() -> Option<(String, String, u64)> {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -360,18 +415,22 @@ fn read_wallpaper_colors_source() -> Option<(String, String, u64)> {
         format!("{}/.local/state/quickshell/user/generated/colors.json", home),
         format!("{}/.cache/wal/colors.json", home),
         format!("{}/.cache/matugen/colors.json", home),
+        format!("{}/.config/matugen/colors.json", home),
+        format!("{}/.cache/DankMaterialShell/dms-colors.json", home),
+        format!("{}/.cache/current_wallpaper_palette.json", home),
     ];
 
     for path_str in candidates {
         let path = Path::new(&path_str);
-        let Ok(content) = fs::read_to_string(path) else { continue };
-        let is_object = serde_json::from_str::<serde_json::Value>(&content)
+        let Ok(raw_content) = fs::read_to_string(path) else { continue };
+        let is_object = serde_json::from_str::<serde_json::Value>(&raw_content)
             .ok()
             .map(|v| v.is_object() && v.as_object().map(|o| !o.is_empty()).unwrap_or(false))
             .unwrap_or(false);
         if !is_object {
             continue;
         }
+        let content = normalize_wallpaper_colors(&raw_content);
         let mtime = fs::metadata(path)
             .and_then(|m| m.modified())
             .ok()
@@ -394,6 +453,7 @@ pub struct FileItem {
     pub name: String,
     pub is_dir: bool,
     pub is_symlink: bool,
+    pub is_hidden: bool,
     pub icon: String,
     pub icon_path: String,
     pub thumbnail: String,
@@ -781,6 +841,22 @@ fn save_settings(map: &HashMap<String, String>) {
     } else {
         eprintln!("loaf: could not write settings to {:?}", path);
     }
+}
+
+fn get_bool_setting(key: &str, default: bool) -> bool {
+    let settings = load_settings();
+    match settings.get(key).map(|s| s.as_str()) {
+        Some("true" | "1") => true,
+        Some("false" | "0") => false,
+        _ => default,
+    }
+}
+
+fn set_bool_setting(key: &str, value: bool) {
+    let mut map = load_settings();
+    map.insert(key.to_string(), value.to_string());
+    save_settings(&map);
+    *SETTINGS_STORE.lock().unwrap() = Some(map);
 }
 
 fn find_in_store(keyword: &str, rel: &str) -> Option<String> {
@@ -2061,7 +2137,7 @@ fn build_breadcrumbs(target_path: &Path, forward_target: Option<&str>) -> Vec<Br
 
 fn scan_directory(
     dir_path: &Path,
-    show_hidden: bool,
+    _show_hidden: bool,
     sort_by: &str,
     sort_ascending: bool,
     folder_position: &str,
@@ -2076,10 +2152,7 @@ fn scan_directory(
                 Err(_) => continue,
             };
 
-            if !show_hidden && name.starts_with('.') {
-                continue;
-            }
-
+            let is_hidden = name.starts_with('.');
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let is_symlink = path.is_symlink();
             let (icon, category) = icon_for_file(&path, is_dir);
@@ -2108,6 +2181,7 @@ fn scan_directory(
                 name,
                 is_dir,
                 is_symlink,
+                is_hidden,
                 icon: icon.to_string(),
                 icon_path,
                 thumbnail,
@@ -2268,7 +2342,10 @@ impl Default for LoafEngineRust {
             .unwrap_or("Home")
             .to_string();
 
-        let items = scan_directory(home_path, false, "name", true, "first");
+        let show_hidden = get_bool_setting("show_hidden", false);
+        let disambiguate_duplicates = get_bool_setting("disambiguate_duplicates", true);
+
+        let items = scan_directory(home_path, show_hidden, "name", true, "first");
         let files_json = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
 
         let crumbs = build_breadcrumbs(home_path, None);
@@ -2291,8 +2368,8 @@ impl Default for LoafEngineRust {
             breadcrumbs_json: QString::from(&crumbs_json),
             is_dark: detect_system_dark_mode(),
             has_clipboard: false,
-            show_hidden: false,
-            disambiguate_duplicates: true,
+            show_hidden,
+            disambiguate_duplicates,
             wallpaper_colors_json: QString::from(&wp_colors),
             is_searching_everywhere: false,
             search_everywhere_json: QString::from("[]"),
@@ -2485,14 +2562,16 @@ impl qobject::LoafEngine {
     }
 
     pub fn toggle_show_hidden(mut self: Pin<&mut Self>) {
-        let cur_val = *self.as_ref().show_hidden();
-        self.as_mut().set_show_hidden(!cur_val);
+        let new_val = !*self.as_ref().show_hidden();
+        self.as_mut().set_show_hidden(new_val);
+        set_bool_setting("show_hidden", new_val);
         self.refresh();
     }
 
     pub fn toggle_disambiguate_duplicates(mut self: Pin<&mut Self>) {
-        let cur_val = *self.as_ref().disambiguate_duplicates();
-        self.as_mut().set_disambiguate_duplicates(!cur_val);
+        let new_val = !*self.as_ref().disambiguate_duplicates();
+        self.as_mut().set_disambiguate_duplicates(new_val);
+        set_bool_setting("disambiguate_duplicates", new_val);
     }
 
     pub fn load_drives(mut self: Pin<&mut Self>) {

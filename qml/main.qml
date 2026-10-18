@@ -2024,7 +2024,11 @@ ApplicationWindow {
                                 var raw = JSON.parse(engine.files_json || "[]");
                                 var q = searchInput.text.toLowerCase().trim();
                                 if (q.length === 0) {
-                                    full = raw;
+                                    if (!engine.show_hidden) {
+                                        full = raw.filter(function(item) { return !item.is_hidden; });
+                                    } else {
+                                        full = raw;
+                                    }
                                 } else {
                                     full = raw.filter(function(item) {
                                         return item.name.toLowerCase().indexOf(q) !== -1;
@@ -2062,6 +2066,7 @@ ApplicationWindow {
                         Connections {
                             target: engine
                             function onFiles_jsonChanged() { gridContainer.reloadItems(); }
+                            function onShow_hiddenChanged() { gridContainer.reloadItems(); }
                             function onSearch_everywhere_jsonChanged() { gridContainer.reloadItems(); }
                             function onIs_searching_everywhereChanged() { gridContainer.reloadItems(); }
                         }

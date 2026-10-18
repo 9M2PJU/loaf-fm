@@ -422,6 +422,9 @@ Item {
         if (value.length > 0) themeMode = value;
         value = readSetting("accentName");
         if (value.length > 0) accentName = value;
+        if (accentName === "wallpaper" && typeof engine !== "undefined" && engine && typeof engine.reload_wallpaper_colors === "function") {
+            engine.reload_wallpaper_colors();
+        }
         value = readSetting("iconSource");
         if (value.length > 0) iconSource = value;
         value = readSetting("phosphorWeight");
@@ -443,8 +446,25 @@ Item {
 
     Component.onCompleted: loadSettings()
 
+    Timer {
+        id: wallpaperWatchTimer
+        interval: 2000
+        repeat: true
+        running: theme.accentName === "wallpaper"
+        onTriggered: {
+            if (typeof engine !== "undefined" && engine && typeof engine.reload_wallpaper_colors === "function") {
+                engine.reload_wallpaper_colors();
+            }
+        }
+    }
+
     onThemeModeChanged: writeSetting("themeMode", themeMode)
-    onAccentNameChanged: writeSetting("accentName", accentName)
+    onAccentNameChanged: {
+        writeSetting("accentName", accentName);
+        if (accentName === "wallpaper" && typeof engine !== "undefined" && engine && typeof engine.reload_wallpaper_colors === "function") {
+            engine.reload_wallpaper_colors();
+        }
+    }
     onIconSourceChanged: writeSetting("iconSource", iconSource)
     onPhosphorWeightChanged: writeSetting("phosphorWeight", phosphorWeight)
     onDragActionChanged: writeSetting("dragAction", dragAction)
