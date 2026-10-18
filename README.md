@@ -44,7 +44,7 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 
 ## Installation
 
-Pre-built packages for **v0.1.0** are available in the [Releases](https://github.com/m-uvex/loaf/releases) tab and under `packaging/dist/`.
+Pre-built packages for **v0.1.0** are available in the [Releases](https://github.com/m-uvex/loaf-fm/releases) tab and under `packaging/dist/`.
 
 ### 1. Debian / Ubuntu / Linux Mint / Pop!_OS (`.deb`)
 
@@ -115,13 +115,13 @@ tar -xzf loaf-v0.1.0-AppDir.tar.gz
 Run directly with flakes enabled:
 
 ```bash
-nix run github:m-uvex/loaf
+nix run github:m-uvex/loaf-fm
 ```
 
 Or install to your user profile:
 
 ```bash
-nix profile install github:m-uvex/loaf
+nix profile install github:m-uvex/loaf-fm
 ```
 
 In a local clone:
