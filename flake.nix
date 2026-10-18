@@ -28,9 +28,10 @@
             pkg-config
             cmake
             ninja
-            rustc
-            cargo
           ];
+          dontUseCmakeConfigure = true;
+          dontUseNinjaBuild = true;
+          dontUseNinjaInstall = true;
           buildInputs = [
             qtEnv
             pkgs.libGL
