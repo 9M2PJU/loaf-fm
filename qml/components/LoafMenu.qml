@@ -21,8 +21,8 @@ LoafPopup {
     property var parentMenu: null
     property var currentSubmenu: null
 
-    // Extra widgets appended below the model rows (View menu uses this).
-    default property alias extraContent: menu.contentHost.data
+    // Extra widgets appended below the model rows (View menu uses this) land in
+    // contentHost via LoafPopup's inherited default property.
 
     // Width is computed imperatively (on model change) so the TextMetrics
     // measurement below never takes part in a property-binding loop. Consumers
