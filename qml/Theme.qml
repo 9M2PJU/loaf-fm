@@ -43,8 +43,13 @@ Item {
 
     // English singular/plural without a translation catalogue loaded:
     // plural(n, qsTr("1 item"), qsTr("%1 items")).
+    // "100,000" (grouped the way the user's locale writes numbers).
+    function number(n) {
+        return Number(n).toLocaleString(Qt.locale(), "f", 0);
+    }
+
     function plural(n, one, many) {
-        return n === 1 ? one : many.arg(n);
+        return n === 1 ? one : many.arg(number(n));
     }
 
     // Single click on a selected item's name starts renaming.

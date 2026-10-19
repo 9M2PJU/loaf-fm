@@ -374,14 +374,14 @@ Item {
 
             Rectangle {
                 visible: pane.selectedCount > 0
-                height: 28
-                width: selLabel.implicitWidth + 20
+                Layout.preferredHeight: 28
+                Layout.preferredWidth: selLabel.implicitWidth + 20
                 radius: theme.radiusFull
                 color: theme.primaryContainer
                 Text {
                     id: selLabel
                     anchors.centerIn: parent
-                    text: qsTr("%1 selected").arg(pane.selectedCount)
+                    text: qsTr("%1 selected").arg(theme.number(pane.selectedCount))
                     color: theme.primaryContainerFg
                     font.pixelSize: theme.fs(11)
                     font.bold: true
@@ -389,8 +389,8 @@ Item {
             }
 
             Rectangle {
-                height: 28
-                width: countLabel.implicitWidth + 18
+                Layout.preferredHeight: 28
+                Layout.preferredWidth: countLabel.implicitWidth + 18
                 radius: theme.radiusFull
                 color: theme.surfaceContainerHigh
                 Text {
