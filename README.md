@@ -40,6 +40,14 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 - **Multiple View Modes**: Responsive Grid View and Detailed List View with dynamic column adaptation for narrow windows.
 - **Rich Drag & Drop**: Drag files into breadcrumb chips, folders, or path bar with right-click menu options (Copy, Move, Link Here).
 - **Navigation Controls**: Mouse side buttons (Back / Forward), full keyboard navigation, and click-outside search defocusing.
+- **Tabs & Split View**: Tabs (`Ctrl+T`), a side-by-side split view (`F3`), and your tabs and window restored on the next start.
+- **Background Operations**: Copy, move, trash, compress and extract run in the background with a progress pill, cancel, undo, and a filesystem flush before removable drives report "done".
+- **Safe by Default**: freedesktop trash (also on USB drives), restores and overwrites that never lose data, archive passwords never on the command line.
+- **Live Folders**: Changes made by other programs appear instantly (inotify), only the changed rows update.
+- **Thumbnails**: Images, videos, PDFs and fonts through the shared freedesktop thumbnail cache and system thumbnailers, loaded in the background.
+- **Search**: Filter the folder as you type, or search subfolders / your whole home folder in the background, optionally inside text files.
+- **Desktop Integration**: GTK bookmarks, localized user folders, Recent and Starred, Open With / default apps, templates ("New Document"), Nautilus scripts, system clipboard, "Show in folder" from other apps, Open as Administrator.
+- **Low-Power Mode**: Turns off animations and effects automatically on machines without GPU acceleration or with little memory; reduce-motion and text-size settings for accessibility.
 
 ---
 
@@ -74,7 +82,22 @@ Or build from the included `PKGBUILD`:
 makepkg -si
 ```
 
-### 3. Universal Portable Tarball (Any Linux Distribution)
+### 3. Fedora / RHEL / openSUSE (`.rpm`)
+
+Install the RPM with `dnf` (it pulls in Qt and suggests 7-Zip, UDisks and thumbnailers):
+
+```bash
+sudo dnf install ./loaf-0.1.0-1.fc44.x86_64.rpm
+```
+
+Or build the RPM yourself from `packaging/rpm/loaf.spec`:
+
+```bash
+git archive --prefix=loaf-0.1.0/ -o ~/rpmbuild/SOURCES/loaf-0.1.0.tar.gz HEAD
+rpmbuild -ba packaging/rpm/loaf.spec
+```
+
+### 4. Universal Portable Tarball (Any Linux Distribution)
 
 The standalone tarball contains the stripped binary, desktop integration, icons, and automated installer scripts:
 
@@ -102,7 +125,7 @@ To uninstall:
 ./uninstall.sh
 ```
 
-### 4. Standalone AppImage (Universal)
+### 5. Standalone AppImage (Universal)
 
 The self-contained single-file executable runs out of the box with zero dependencies:
 
@@ -118,7 +141,7 @@ tar -xzf loaf-v0.1.0-AppDir.tar.gz
 ./Loaf.AppDir/AppRun
 ```
 
-### 5. Using Nix / NixOS
+### 6. Using Nix / NixOS
 
 Run directly with flakes enabled:
 
@@ -157,15 +180,40 @@ nix develop --command cargo build --release
 ### Manual Build
 
 Requirements:
-- Rust toolchain (1.75+)
-- Qt 6.x (`qtbase`, `qtdeclarative`, `qtsvg`, `qtwayland`)
+- Rust toolchain (1.75+) and a C++17 compiler
+- Qt 6.x development files (`qtbase` incl. private headers and QtDBus, `qtdeclarative`, `qtsvg`, `qtwayland`)
+  - Fedora: `sudo dnf install qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtdeclarative-devel qt6-qtsvg-devel qt6-qtwayland-devel`
 - CMake, Ninja, and `pkg-config`
-- `p7zip` and `zip` (for archive handling)
+
+Optional at runtime (features degrade gracefully without them):
+- `7zip`/`p7zip` (zip, 7z, rar, iso, encrypted archives), `tar`, `zstd`, `cpio`
+- `udisks2` (mount, eject, unlock encrypted drives, rename labels)
+- `ffmpegthumbnailer` / `evince-thumbnailer` (video and PDF thumbnails)
+- `xdg-utils`, `libsecret` (`secret-tool`, to remember drive passphrases), `polkit` (Open as Administrator)
 
 ```bash
 cargo build --release
 ./target/release/loaf
+cargo test   # backend unit tests
 ```
+
+## Command Line
+
+```text
+loaf [OPTIONS] [PATH...]
+
+  PATH               Folder to open, or a file to show selected in its folder
+  -p, --path <DIR>   Start in DIR
+  -m, --mini         Start in the compact layout
+      --new-window   Open a separate window instead of a tab in the running one
+  -v, --verbose      Print diagnostic messages
+      --version      Print the version
+  -h, --help         Print help
+```
+
+Running `loaf <path>` while Loaf is open hands the path to the running window
+(as a new tab). Loaf also answers `org.freedesktop.FileManager1`, so "Show in
+folder" from browsers and other apps opens it.
 
 ---
 
@@ -187,6 +235,24 @@ cargo build --release
 | `Arrow Keys` | Move selection across files and folders |
 | `Enter` / `Return` | Open selected item |
 | `Escape` | Dismiss modal / Close context menu / Defocus search |
+| `Shift` + `Delete` | Delete permanently (asks first) |
+| `Space` | Quick Look preview |
+| `F2` (several selected) | Rename several items at once |
+| `Ctrl` + `T` / `Ctrl` + `W` | New tab / Close tab |
+| `Ctrl` + `Tab` / `Ctrl` + `Shift` + `Tab` | Next / previous tab |
+| `F3` | Toggle split view |
+| `F5` / `Ctrl` + `R` | Reload the folder |
+| `F9` | Expand / collapse the sidebar |
+| `Ctrl` + `F` | Search |
+| `Ctrl` + `N` | New window |
+| `Ctrl` + `Shift` + `N` | New folder |
+| `Ctrl` + `D` | Add the folder to the sidebar |
+| `Ctrl` + `S` / `Ctrl` + `Shift` + `I` | Select by pattern / Invert selection |
+| `Ctrl` + `Shift` + `C` | Copy path |
+| `Alt` + `Enter` | Properties |
+| `Ctrl` + `+` / `Ctrl` + `-` / `Ctrl` + `0` / `Ctrl` + Scroll | Icon size |
+| `Ctrl` + `1` / `Ctrl` + `2` | Grid / List view |
+| `Alt` + `Home` | Home folder |
 
 ---
 
@@ -195,10 +261,27 @@ cargo build --release
 ```text
 loaf/
 ├── src/
-│   ├── main.rs              Application entry point, QML engine, and event filters
-│   └── bridge.rs            cxx-qt Rust engine, disk metrics, operations, undo/redo
+│   ├── main.rs              Entry point: command line, single instance, QML engine
+│   ├── pane.rs              LoafEngine: one file view as a threaded QAbstractListModel
+│   ├── core.rs              LoafCore: file operations, undo/redo, drives, places, settings
+│   ├── native.rs            Rust side of the C++ helpers (cpp/)
+│   ├── fsops.rs             Copy/move/delete with progress, cancel and filesystem flush
+│   ├── trash.rs             freedesktop.org trash (home and per-drive)
+│   ├── archive.rs           Archive create/extract/list through 7-Zip, tar, cpio
+│   ├── listing.rs           Directory scanning, natural sort, incremental diffs
+│   ├── watcher.rs           inotify folder and device watchers
+│   ├── search.rs            Background recursive search
+│   ├── apps.rs / xdg.rs     Desktop entries, MIME defaults, user dirs, bookmarks, recent
+│   ├── icons.rs / drives.rs Icon themes; block devices through UDisks
+│   └── info.rs / theme.rs   Quick Look and Properties data; dark mode and wallpaper palette
+├── cpp/                     Async thumbnail provider, clipboard, MIME, D-Bus services
 ├── qml/
-│   ├── main.qml             Main window frame, navigation rail, and file stage
+│   ├── main.qml             Main window: top bar, tabs, split view, menus and dialogs
+│   ├── FilePane.qml         One file view (grid / list, selection, inline rename)
+│   ├── Sidebar.qml          Places, bookmarks, Recent, Starred and Trash
+│   ├── QuickLook.qml        Space-bar preview
+│   ├── PropertiesDialog.qml / BatchRenameDialog.qml / ConflictDialog.qml
+│   ├── OperationsPanel.qml / Toast.qml   Progress pill and messages
 │   ├── PCView.qml           This PC tab: storage devices and frequent folders
 │   ├── SettingsView.qml     Theme preferences, icons, behavior, and experimental toggles
 │   ├── Theme.qml            Material 3 design token engine & palette derivation
