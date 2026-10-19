@@ -537,25 +537,24 @@ pub fn uses_shell_syntax(command: &str) -> bool {
     command.contains(['|', '&', ';', '>', '<', '`', '$', '(', ')', '{', '}', '*', '?', '\n'])
 }
 
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
-
-/// Puts the quoted file path into a user-typed command (appending it when
-/// the command has no placeholder and no shell syntax).
-pub fn substitute_command_path(command: &str, path: &Path) -> String {
-    let quoted = shell_quote(&path.to_string_lossy());
+/// Turns a user-typed command into a `sh -c` script that reads the file
+/// path from `$1`. The path is never pasted into the script text, so names
+/// containing quotes, `$(...)` or backticks can't run anything. Quotes the
+/// user put around a placeholder (`"%f"`, `'%f'`) are dropped.
+/// Commands without a placeholder and without shell syntax get `"$1"` appended.
+pub fn command_script(command: &str) -> String {
     let mut out = command.to_string();
     let mut replaced = false;
     for ph in PLACEHOLDERS {
         if out.contains(ph) {
-            out = out.replace(ph, &quoted);
+            for wrapped in [format!("\"{}\"", ph), format!("'{}'", ph), ph.to_string()] {
+                out = out.replace(&wrapped, "\"$1\"");
+            }
             replaced = true;
         }
     }
     if !replaced && !uses_shell_syntax(&out) {
-        out.push(' ');
-        out.push_str(&quoted);
+        out.push_str(" \"$1\"");
     }
     out
 }
@@ -648,10 +647,20 @@ mod tests {
 
     #[test]
     fn custom_commands() {
-        let p = Path::new("/tmp/it's here.mp4");
-        assert_eq!(substitute_command_path("mpv", p), "mpv '/tmp/it'\\''s here.mp4'");
-        assert_eq!(substitute_command_path("mpv %f --fs", p), "mpv '/tmp/it'\\''s here.mp4' --fs");
-        assert_eq!(substitute_command_path("echo hi | wc", p), "echo hi | wc");
+        assert_eq!(command_script("mpv"), "mpv \"$1\"");
+        assert_eq!(command_script("mpv %f --fs"), "mpv \"$1\" --fs");
+        assert_eq!(command_script("ffmpeg -i \"%f\" o.mp4"), "ffmpeg -i \"$1\" o.mp4");
+        assert_eq!(command_script("cat '%f'"), "cat \"$1\"");
+        assert_eq!(command_script("echo hi | wc"), "echo hi | wc");
+        // The path only ever arrives as an argument.
+        let d = std::env::temp_dir().join(format!("loaf-cmd-{}", std::process::id()));
+        fs::create_dir_all(&d).unwrap();
+        let evil = d.join("x\"$(touch pwned)\"'`touch pwned2`'");
+        let out = Command::new("sh").arg("-c").arg(command_script("printf %s \"%f\"")).arg("sh").arg(&evil)
+            .current_dir(&d).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), evil.to_string_lossy());
+        assert!(!d.join("pwned").exists() && !d.join("pwned2").exists());
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

@@ -11,6 +11,10 @@ LoafPopup {
     modal: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
+    // Window shortcuts are blocked while a modal popup is open, so Space
+    // (which opened Quick Look) needs its own shortcut to close it again.
+    Shortcut { sequence: "Space"; enabled: quickLook.visible; onActivated: quickLook.close() }
+
     property var info: ({})
     property bool imageFailed: false
     // Rendered once per open so scrolling never re-runs the highlighter.
@@ -285,7 +289,7 @@ LoafPopup {
             Text {
                 anchors.centerIn: parent
                 visible: quickLookImage.status === Image.Error
-                text: "Could not render this image"
+                text: qsTr("Could not render this image")
                 color: theme.textMuted
                 font.pixelSize: theme.fs(13)
             }
@@ -354,7 +358,7 @@ LoafPopup {
 
         Text {
             visible: quickLook.info.truncated === true
-            text: "Preview truncated — showing the first part of the file"
+            text: qsTr("Preview truncated — showing the first part of the file")
             color: theme.textMuted
             font.pixelSize: theme.fs(11)
         }

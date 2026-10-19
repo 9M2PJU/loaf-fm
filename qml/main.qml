@@ -46,7 +46,7 @@ ApplicationWindow {
         || confirmDialog.visible || patternModal.visible || placeEdit.visible || customizePlaces.visible
         || window.isEditingPath
     readonly property bool gridKeyboardReady: activeView === "files" && !searchInput.activeFocus
-        && !pathInput.activeFocus && !anyModalOpen && activePane.renamingPath === ""
+        && !pathInput.activeFocus && !anyModalOpen && !!activePane && activePane.renamingPath === ""
 
     // ---------------------------------------------------------------------
     // helpers used by the panes and dialogs
@@ -140,22 +140,23 @@ ApplicationWindow {
         var c = native.clipboardFiles();
         if (!c.paths || c.paths.length === 0 || !dest)
             return;
-        transfer(c.paths, dest, c.cut ? "move" : "copy");
+        transfer(c.paths, dest, c.cut ? "move" : "copy", c.cut);
     }
 
     function afterCutPaste() {
         native.clearClipboardIfOurs();
     }
 
-    // Starts a copy/move, asking first when names clash.
-    function transfer(paths, dest, mode) {
+    // Starts a copy/move, asking first when names clash. `fromCut` is set
+    // only when pasting a cut, which is when the clipboard gets used up.
+    function transfer(paths, dest, mode, fromCut) {
         var conflicts = JSON.parse(core.check_conflicts(JSON.stringify(paths), dest) || "[]");
         if (conflicts.length > 0) {
-            conflictDialog.showFor(conflicts, paths, dest, mode);
+            conflictDialog.showFor(conflicts, paths, dest, mode, !!fromCut);
             return;
         }
         core.transfer(JSON.stringify(paths), dest, mode, "rename");
-        if (mode === "move")
+        if (fromCut)
             afterCutPaste();
     }
 
@@ -228,6 +229,15 @@ ApplicationWindow {
     function restoreTab(i) {
         var t = tabs[i];
         currentTab = i;
+        // Never leave activePane pointing at a pane that is being destroyed.
+        activePane = pane0;
+        // Selections belong to the tab that made them.
+        pane0.clearSelection();
+        pane0.renamingPath = "";
+        if (pane1Loader.item) {
+            pane1Loader.item.clearSelection();
+            pane1Loader.item.renamingPath = "";
+        }
         splitView = t.split;
         if (t.states[0])
             pane0.engine.restore_state(t.states[0]);
@@ -257,7 +267,9 @@ ApplicationWindow {
                 return qsTr("Starred");
             if (loc === core.user_dir("HOME"))
                 return qsTr("Home");
-            var parts = loc.split("#")[0].split("/").filter(function(p) { return p.length > 0; });
+            if (loc.indexOf("archive://") === 0)
+                loc = loc.substring(10).split("#")[0];
+            var parts = loc.split("/").filter(function(p) { return p.length > 0; });
             return parts.length > 0 ? parts[parts.length - 1] : "/";
         } catch (e) {
             return "";
@@ -299,6 +311,8 @@ ApplicationWindow {
     }
 
     function toggleSplit() {
+        if (splitView)
+            activePane = pane0;
         splitView = !splitView;
         if (splitView) {
             Qt.callLater(function() {
@@ -307,8 +321,6 @@ ApplicationWindow {
                     activePane = pane1Loader.item;
                 }
             });
-        } else {
-            activePane = pane0;
         }
     }
 
@@ -325,7 +337,8 @@ ApplicationWindow {
         core.set_setting("session", JSON.stringify(session));
     }
 
-    function restoreSession() {
+    // geometryOnly: started with explicit paths, so open just those.
+    function restoreSession(geometryOnly) {
         if (core.get_setting("restoreSession") === "false" || native.isAdmin)
             return false;
         var raw = core.get_setting("session");
@@ -340,7 +353,7 @@ ApplicationWindow {
             if (s.maximized)
                 window.showMaximized();
             sidebar.expanded = s.sidebar === true;
-            if (s.tabs && s.tabs.length > 0) {
+            if (!geometryOnly && s.tabs && s.tabs.length > 0) {
                 tabs = s.tabs.map(function(t) { return { states: t.states || ["", ""], split: !!t.split, active: t.active || 0, title: window.titleFromState(t.states ? t.states[0] : "") }; });
                 restoreTab(Math.max(0, Math.min(s.current || 0, tabs.length - 1)));
                 return true;
@@ -361,22 +374,40 @@ ApplicationWindow {
                 newTab(core.user_dir("HOME"));
             return;
         }
+        // Group by folder so several files in one folder end up selected
+        // together in a single view.
+        var dirs = [];
+        var picks = {};
+        var props = [];
         for (var i = 0; i < paths.length; ++i) {
             var p = paths[i];
             var info = JSON.parse(core.get_item_info(p) || "{}");
             if (!info.exists)
                 continue;
-            var dir = (info.is_dir && mode !== "select") ? p : (info.parent || "/");
             if (mode === "properties") {
-                showProperties([p]);
-            } else if (activeView === "files" && engine.current_path === dir) {
-                // Already showing that folder: just select the item.
-                if (dir !== p)
-                    activePane.selectPaths([p]);
+                props.push(p);
+                continue;
+            }
+            var dir = (info.is_dir && mode !== "select") ? p : (info.parent || "/");
+            if (!picks[dir]) {
+                picks[dir] = [];
+                dirs.push(dir);
+            }
+            if (dir !== p)
+                picks[dir].push(p);
+        }
+        if (props.length > 0)
+            showProperties(props);
+        for (var j = 0; j < dirs.length; ++j) {
+            var d = dirs[j];
+            if (activeView === "files" && engine.current_path === d) {
+                // Already showing that folder: just select the items.
+                if (picks[d].length > 0)
+                    activePane.selectPaths(picks[d]);
             } else {
-                newTab(dir);
-                if (dir !== p)
-                    activePane.pendingSelect = [p];
+                newTab(d);
+                if (picks[d].length > 0)
+                    activePane.pendingSelect = picks[d];
             }
         }
         window.raise();
@@ -387,8 +418,8 @@ ApplicationWindow {
 
     Component.onCompleted: {
         refreshCutSet();
-        var restored = restoreSession();
         var pending = native.takePendingOpen();
+        var restored = restoreSession(pending.length > 0);
         if (native.startupMode === "mini") {
             sidebar.expanded = false;
             theme.zoomIndex = 1;
@@ -910,6 +941,7 @@ ApplicationWindow {
                 border.color: theme.primary
 
                 RowLayout {
+                    id: searchRow
                     anchors.fill: parent
                     anchors.leftMargin: 14
                     anchors.rightMargin: 6
@@ -973,6 +1005,25 @@ ApplicationWindow {
                             window.activePane.openSelected();
                             event.accepted = true;
                         }
+                    }
+
+                    // Keep the box in step with the pane: navigating clears the
+                    // filter in the backend, and each pane/tab has its own.
+                    function syncSearchBox() {
+                        if (window.activeView !== "files")
+                            return;
+                        var want = engine.is_searching_everywhere ? engine.search_query : engine.filter_text;
+                        if (searchInput.text !== want)
+                            searchInput.text = want;
+                    }
+                    Connections {
+                        target: window.engine
+                        function onFilter_textChanged() { if (!window.engine.is_searching_everywhere) searchRow.syncSearchBox(); }
+                        function onCurrent_pathChanged() { if (!window.engine.is_searching_everywhere) searchRow.syncSearchBox(); }
+                    }
+                    Connections {
+                        target: window
+                        function onActivePaneChanged() { searchRow.syncSearchBox(); }
                     }
 
                     Timer {
@@ -1130,7 +1181,8 @@ ApplicationWindow {
                     anchors.rightMargin: 6
                     spacing: 6
                     LoafIcon {
-                        name: window.tabs[tabDelegate.index] && window.tabs[tabDelegate.index].split ? "columns" : "folder"
+                        name: (tabDelegate.index === window.currentTab ? window.splitView
+                            : (window.tabs[tabDelegate.index] && window.tabs[tabDelegate.index].split)) ? "columns" : "folder"
                         size: 14
                         color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMuted
                     }
@@ -1358,7 +1410,17 @@ ApplicationWindow {
         property bool isRmb: false
         property var paths: []
         property string hoverTarget: ""
+        // Engine of the pane the hovered folder is in (split view).
+        property var hoverEngine: null
         property point cursorPos: Qt.point(0, 0)
+
+        // Never spring-open a folder that is itself being dragged.
+        function hover(path, eng) {
+            if (paths.indexOf(path) >= 0)
+                return;
+            hoverTarget = path;
+            hoverEngine = eng;
+        }
 
         function begin(list, mouse) {
             if (!list || list.length === 0)
@@ -1449,8 +1511,9 @@ ApplicationWindow {
         onTriggered: {
             if (dragManager.active && dragManager.hoverTarget.length > 0) {
                 var t = dragManager.hoverTarget;
+                var eng = dragManager.hoverEngine || window.activePane.engine;
                 dragManager.hoverTarget = "";
-                window.activePane.engine.set_path(t);
+                eng.set_path(t);
             }
         }
     }
@@ -1873,13 +1936,20 @@ ApplicationWindow {
         function openFor(req) {
             request = req;
             pwField.text = "";
+            pwRepeat.text = "";
             rememberBox.checked = false;
             open();
-            pwField.forceActiveFocus();
         }
+        // Focus only works once the popup is really shown.
+        onOpened: pwField.forceActiveFocus()
+        // A new archive's password is typed twice: a typo would lock the
+        // files away for good.
+        readonly property bool needsRepeat: request.kind === "compress"
+        readonly property bool mismatch: needsRepeat && pwRepeat.text.length > 0 && pwRepeat.text !== pwField.text
+        readonly property bool canAccept: pwField.text.length > 0 && (!needsRepeat || pwRepeat.text === pwField.text)
         function accept() {
             var pw = pwField.text;
-            if (pw.length === 0)
+            if (!canAccept)
                 return;
             var r = request;
             close();
@@ -1907,7 +1977,22 @@ ApplicationWindow {
             echoMode: TextInput.Password
             placeholderText: qsTr("Password")
             color: theme.textMain
+            onAccepted: passwordModal.needsRepeat ? pwRepeat.forceActiveFocus() : passwordModal.accept()
+        }
+        LoafTextField {
+            id: pwRepeat
+            visible: passwordModal.needsRepeat
+            Layout.fillWidth: true
+            echoMode: TextInput.Password
+            placeholderText: qsTr("Repeat password")
+            color: theme.textMain
             onAccepted: passwordModal.accept()
+        }
+        Text {
+            visible: passwordModal.mismatch
+            text: qsTr("The passwords don't match")
+            color: theme.danger
+            font.pixelSize: theme.fs(11)
         }
         LoafCheckBox {
             id: rememberBox
@@ -1918,7 +2003,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             LoafButton { text: qsTr("Cancel"); variant: "text"; onClicked: passwordModal.close() }
-            LoafButton { text: passwordModal.request.kind === "compress" ? qsTr("Create") : qsTr("Unlock"); variant: "filled"; onClicked: passwordModal.accept() }
+            LoafButton { text: passwordModal.request.kind === "compress" ? qsTr("Create") : qsTr("Unlock"); variant: "filled"; enabled: passwordModal.canAccept; onClicked: passwordModal.accept() }
         }
     }
 
@@ -1929,12 +2014,26 @@ ApplicationWindow {
         property string message: ""
         property string actionText: qsTr("OK")
         property var onConfirm: null
+        // Requests that arrive while one is open wait their turn instead of
+        // silently replacing it (its button would then do something else).
+        property var queue: []
         function ask(t, msg, action, fn) {
+            if (visible) {
+                queue = queue.concat([[t, msg, action, fn]]);
+                return;
+            }
             title = t;
             message = msg;
             actionText = action;
             onConfirm = fn;
             open();
+        }
+        onClosed: {
+            if (queue.length > 0) {
+                var next = queue[0];
+                queue = queue.slice(1);
+                Qt.callLater(function() { confirmDialog.ask(next[0], next[1], next[2], next[3]); });
+            }
         }
         Text {
             Layout.fillWidth: true
@@ -1972,6 +2071,7 @@ ApplicationWindow {
             pathField.text = p.path;
             open();
         }
+        onOpened: { nameField.forceActiveFocus(); nameField.selectAll(); }
         Text { text: qsTr("Name"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
         LoafTextField { id: nameField; Layout.fillWidth: true; color: theme.textMain }
         Text { text: qsTr("Folder"); color: theme.textMuted; font.pixelSize: theme.fs(12) }

@@ -29,7 +29,7 @@ LoafDialog {
         recursive = false;
         sizeText = "";
         info = multiple ? ({}) : JSON.parse(core.get_item_info(list[0]) || "{}");
-        mode = info.mode_bits || 0;
+        mode = (info.mode_bits || 0) & 0o777;
         apps = [];
         defaultApp = "";
         if (!multiple && !info.is_dir) {
@@ -209,7 +209,7 @@ LoafDialog {
                 } else {
                     window.toast("info", qsTr("Permissions updated"));
                     dlg.info = JSON.parse(core.get_item_info(dlg.paths[0]) || "{}");
-                    dlg.mode = dlg.info.mode_bits || 0;
+                    dlg.mode = (dlg.info.mode_bits || 0) & 0o777;
                 }
             }
         }

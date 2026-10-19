@@ -238,14 +238,14 @@ Item {
         var items = [];
 
         items.push({
-            "text": "Open",
+            "text": qsTr("Open"),
             "icon": "folder-open",
             "enabled": mounted,
             "action": function () { pcView.openDrive(d); }
         });
         if (!mounted) {
             items.push({
-                "text": "Mount",
+                "text": qsTr("Mount"),
                 "icon": "download",
                 "separatorBefore": true,
                 "action": function () { pcView.mountDrive(d); }
@@ -276,14 +276,14 @@ Item {
             });
         }
         items.push({
-            "text": "Rename",
+            "text": qsTr("Rename"),
             "icon": "pencil-simple",
             "separatorBefore": true,
             "action": function () { pcView.requestRename(d); }
         });
         if (external) {
             items.push({
-                "text": "Eject",
+                "text": qsTr("Eject"),
                 "icon": "eject",
                 "danger": true,
                 "enabled": mounted,
@@ -362,7 +362,7 @@ Item {
                 LoafButton {
                     id: customizeBtn
                     visible: pcView.customizationEnabled
-                    text: pcView.customizing ? "Done" : "Customize"
+                    text: pcView.customizing ? qsTr("Done") : qsTr("Customize")
                     icon: pcView.customizing ? "check" : "sliders-horizontal"
                     variant: pcView.customizing ? "tonal" : "outlined"
                     onClicked: pcView.isCustomizing = !pcView.isCustomizing
@@ -391,18 +391,18 @@ Item {
                         icon: sectionDelegate.secKey === "places" ? "folder"
                               : (sectionDelegate.secKey === "frequent" ? "clock"
                               : (sectionDelegate.secKey === "internal" ? "hard-drives" : "usb"))
-                        title: sectionDelegate.secKey === "places" ? "Places"
-                               : (sectionDelegate.secKey === "frequent" ? "Frequent"
-                               : (sectionDelegate.secKey === "internal" ? "Internal Storage" : "External Storage"))
+                        title: sectionDelegate.secKey === "places" ? qsTr("Places")
+                               : (sectionDelegate.secKey === "frequent" ? qsTr("Frequent")
+                               : (sectionDelegate.secKey === "internal" ? qsTr("Internal Storage") : qsTr("External Storage")))
                         subtitle: sectionDelegate.secKey === "external"
-                                  ? (pcView.externalDrives.length + (pcView.externalDrives.length === 1 ? " drive connected" : " drives connected"))
+                                  ? theme.plural(pcView.externalDrives.length, qsTr("1 drive connected"), qsTr("%1 drives connected"))
                                   : ""
 
                         // View mode toggle (places / frequent only)
                         LoafButton {
                             visible: pcView.customizing
                                      && (sectionDelegate.secKey === "places" || sectionDelegate.secKey === "frequent")
-                            text: sectionDelegate.secView === "carousel" ? "Carousel" : "Grid"
+                            text: sectionDelegate.secView === "carousel" ? qsTr("Carousel") : qsTr("Grid")
                             icon: sectionDelegate.secView === "carousel" ? "list" : "squares-four"
                             variant: "tonal"
                             onClicked: pcView.toggleSectionView(sectionDelegate.secKey)
@@ -425,7 +425,7 @@ Item {
                         LoafButton {
                             visible: pcView.customizing
                             icon: sectionDelegate.secVisible ? "x" : "plus"
-                            variant: sectionDelegate.secVisible ? "text" : "tonal"
+                            variant: sectionDelegate.secVisible ? "text" : qsTr("tonal")
                             onClicked: pcView.toggleSectionVisibility(sectionDelegate.secKey)
                         }
                     }
@@ -444,12 +444,12 @@ Item {
                             anchors.centerIn: parent
                             spacing: 12
                             Text {
-                                text: "Section hidden"
+                                text: qsTr("Section hidden")
                                 color: theme.textMuted
                                 font.pixelSize: theme.fs(12)
                             }
                             LoafButton {
-                                text: "Restore"
+                                text: qsTr("Restore")
                                 icon: "plus"
                                 variant: "tonal"
                                 onClicked: pcView.toggleSectionVisibility(sectionDelegate.secKey)
@@ -673,7 +673,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 2
                                     Text {
-                                        text: "System Drive Pool"
+                                        text: qsTr("System Drive Pool")
                                         color: theme.textMain
                                         font.pixelSize: theme.fs(15)
                                         font.bold: true
@@ -766,9 +766,9 @@ Item {
     // Rename drive prompt.
     LoafTextPrompt {
         id: renamePrompt
-        title: "Rename Drive"
-        confirmText: "Rename"
-        placeholder: "Drive name"
+        title: qsTr("Rename Drive")
+        confirmText: qsTr("Rename")
+        placeholder: qsTr("Drive name")
         onAccepted: function (text) {
             var name = String(text).trim();
             if (name.length > 0 && pcView.renameDevice.length > 0) {

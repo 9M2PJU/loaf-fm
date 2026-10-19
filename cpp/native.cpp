@@ -50,8 +50,15 @@ static QStringList toLocalPaths(const QStringList &items)
 LoafNative::LoafNative(QObject *parent)
     : QObject(parent)
 {
-    if (QClipboard *cb = QGuiApplication::clipboard())
-        connect(cb, &QClipboard::dataChanged, this, &LoafNative::clipboardChanged);
+    if (QClipboard *cb = QGuiApplication::clipboard()) {
+        // Parse once per change: reading another app's clipboard can block,
+        // so menus must never do it synchronously.
+        connect(cb, &QClipboard::dataChanged, this, [this] {
+            m_clipboard = readClipboard();
+            Q_EMIT clipboardChanged();
+        });
+        m_clipboard = readClipboard();
+    }
 }
 
 void LoafNative::setClipboardFiles(const QStringList &paths, bool cut)
@@ -76,6 +83,11 @@ void LoafNative::setClipboardFiles(const QStringList &paths, bool cut)
 
 QVariantMap LoafNative::clipboardFiles() const
 {
+    return m_clipboard;
+}
+
+QVariantMap LoafNative::readClipboard() const
+{
     QVariantMap result{{QStringLiteral("cut"), false}, {QStringLiteral("paths"), QStringList()}};
     const QMimeData *data = QGuiApplication::clipboard()->mimeData();
     if (!data)
@@ -96,7 +108,8 @@ QVariantMap LoafNative::clipboardFiles() const
             if (u.isLocalFile())
                 paths << u.toLocalFile();
         }
-    } else if (data->hasUrls()) {
+    }
+    if (paths.isEmpty() && data->hasUrls()) {
         for (const QUrl &u : data->urls()) {
             if (u.isLocalFile())
                 paths << u.toLocalFile();
@@ -157,8 +170,8 @@ bool LoafNative::isAdmin() const
     return !qEnvironmentVariable("LOAF_ADMIN").isEmpty();
 }
 
-FileManager1Adaptor::FileManager1Adaptor(LoafNative *native)
-    : QDBusAbstractAdaptor(native), m_native(native) {}
+FileManager1Adaptor::FileManager1Adaptor(QObject *host, LoafNative *native)
+    : QDBusAbstractAdaptor(host), m_native(native) {}
 
 void FileManager1Adaptor::ShowFolders(const QStringList &uris, const QString &)
 {
@@ -175,8 +188,8 @@ void FileManager1Adaptor::ShowItemProperties(const QStringList &uris, const QStr
     Q_EMIT m_native->openRequested(toLocalPaths(uris), QStringLiteral("properties"));
 }
 
-LoafAppAdaptor::LoafAppAdaptor(LoafNative *native)
-    : QDBusAbstractAdaptor(native), m_native(native) {}
+LoafAppAdaptor::LoafAppAdaptor(QObject *host, LoafNative *native)
+    : QDBusAbstractAdaptor(host), m_native(native) {}
 
 void LoafAppAdaptor::Open(const QStringList &paths, const QString &mode)
 {
@@ -190,36 +203,44 @@ bool forward_to_running_instance(const rust::Vec<rust::String> &paths, rust::Str
         return false;
     if (!bus.interface()->isServiceRegistered(QString::fromLatin1(kService)))
         return false;
-    QStringList list;
+    QStringList raw;
     for (const rust::String &p : paths)
-        list << QFileInfo(QString::fromUtf8(p.data(), static_cast<qsizetype>(p.size()))).absoluteFilePath();
-    QDBusInterface iface(QString::fromLatin1(kService), QString::fromLatin1(kPath),
-                         QStringLiteral("io.github.m_uvex.Loaf"), bus);
-    if (!iface.isValid())
-        return false;
-    iface.setTimeout(3000);
-    QDBusMessage reply = iface.call(QStringLiteral("Open"), list, toQString(mode));
+        raw << QString::fromUtf8(p.data(), static_cast<qsizetype>(p.size()));
+    QDBusMessage msg = QDBusMessage::createMethodCall(QString::fromLatin1(kService), QString::fromLatin1(kPath),
+                                                      QStringLiteral("io.github.m_uvex.Loaf"), QStringLiteral("Open"));
+    msg << toLocalPaths(raw) << toQString(mode);
+    // A hung instance must not stall this launch for long.
+    QDBusMessage reply = bus.call(msg, QDBus::Block, 3000);
     return reply.type() == QDBusMessage::ReplyMessage;
 }
 
 void setup_engine(QQmlApplicationEngine &engine, const rust::Vec<rust::String> &paths, rust::Str mode)
 {
     auto *native = new LoafNative(&engine);
-    QStringList initial;
+    QStringList raw;
     for (const rust::String &p : paths)
-        initial << QFileInfo(QString::fromUtf8(p.data(), static_cast<qsizetype>(p.size()))).absoluteFilePath();
-    native->queueOpen(initial, toQString(mode));
+        raw << QString::fromUtf8(p.data(), static_cast<qsizetype>(p.size()));
+    // mode: "tab" or "mini", optionally with ",new-window".
+    const QString modeStr = toQString(mode);
+    const bool newWindow = modeStr.contains(QLatin1String("new-window"));
+    native->queueOpen(toLocalPaths(raw), modeStr.section(QLatin1Char(','), 0, 0));
 
     QDBusConnection bus = QDBusConnection::sessionBus();
-    // An admin (root) instance must not take over the user's services.
-    if (bus.isConnected() && !native->isAdmin() && toQString(mode) != QLatin1String("new-window")) {
-        new LoafAppAdaptor(native);
-        new FileManager1Adaptor(native);
-        bus.registerObject(QString::fromLatin1(kPath), native);
-        bus.registerService(QString::fromLatin1(kService));
-        // Only claim FileManager1 if no other file manager owns it already.
-        if (bus.registerObject(QStringLiteral("/org/freedesktop/FileManager1"), native))
-            bus.registerService(QStringLiteral("org.freedesktop.FileManager1"));
+    // A separate window or an admin (root) instance must not take over the
+    // user's services.
+    if (bus.isConnected() && !native->isAdmin() && !newWindow) {
+        // One object per path, each exporting just its own interface.
+        auto *appObj = new QObject(native);
+        new LoafAppAdaptor(appObj, native);
+        auto *fmObj = new QObject(native);
+        new FileManager1Adaptor(fmObj, native);
+        if (bus.registerService(QString::fromLatin1(kService)))
+            bus.registerObject(QString::fromLatin1(kPath), appObj, QDBusConnection::ExportAdaptors);
+        else
+            qWarning("loaf: another instance already owns %s", kService);
+        // FileManager1 stays with whichever file manager claimed it first.
+        if (bus.registerService(QStringLiteral("org.freedesktop.FileManager1")))
+            bus.registerObject(QStringLiteral("/org/freedesktop/FileManager1"), fmObj, QDBusConnection::ExportAdaptors);
     }
 
     auto *translator = new QTranslator(&engine);

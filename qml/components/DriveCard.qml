@@ -252,7 +252,7 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
-        text: "Mount"
+        text: qsTr("Mount")
         variant: "tonal"
         icon: "download-simple"
         onClicked: root.mountRequested()

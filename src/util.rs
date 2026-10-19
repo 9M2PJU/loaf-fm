@@ -127,10 +127,13 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // Unique per call: concurrent writers must never share a temp file.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let tmp = path.with_file_name(format!(
-        ".{}.loaf-tmp-{}",
+        ".{}.loaf-tmp-{}-{}",
         path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-        std::process::id()
+        std::process::id(),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, path).map_err(|e| {

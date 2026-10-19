@@ -317,6 +317,66 @@ pub fn replace(src: &Path, dst: &Path, is_move: bool, mon: &dyn Monitor) -> io::
     remove_tree(&old)
 }
 
+/// Replaces `dst` with a symlink to `src`. Refuses when `dst` already is
+/// `src` (e.g. reached through a linked folder), which would otherwise
+/// delete the source and leave a link pointing at itself.
+pub fn replace_with_link(src: &Path, dst: &Path) -> io::Result<()> {
+    if let (Ok(a), Ok(b)) = (fs::canonicalize(src), fs::canonicalize(dst)) {
+        if a == b {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "source and destination are the same item"));
+        }
+    }
+    let staged = staging_name(dst, "new");
+    std::os::unix::fs::symlink(src, &staged)?;
+    let old = staging_name(dst, "old");
+    if let Err(e) = fs::rename(dst, &old) {
+        let _ = fs::remove_file(&staged);
+        return Err(e);
+    }
+    if let Err(e) = fs::rename(&staged, dst) {
+        let _ = fs::rename(&old, dst);
+        let _ = fs::remove_file(&staged);
+        return Err(e);
+    }
+    remove_tree(&old)
+}
+
+/// Renames without ever replacing an existing `to` (fails with
+/// `AlreadyExists` instead). A plain rename would silently replace an empty
+/// folder or file that appeared at `to` meanwhile.
+pub fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let a = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+    let b = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+    let r = unsafe { libc::renameat2(libc::AT_FDCWD, a.as_ptr(), libc::AT_FDCWD, b.as_ptr(), libc::RENAME_NOREPLACE) };
+    if r == 0 {
+        return Ok(());
+    }
+    let e = io::Error::last_os_error();
+    match e.raw_os_error() {
+        // Filesystem without RENAME_NOREPLACE support: best effort.
+        Some(libc::EINVAL) | Some(libc::ENOSYS) => {
+            if fs::symlink_metadata(to).is_ok() {
+                return Err(io::Error::from(io::ErrorKind::AlreadyExists));
+            }
+            fs::rename(from, to)
+        }
+        _ => Err(e),
+    }
+}
+
+/// Moves `from` into `dir` under `name`, or the first free "name (N)".
+pub fn place_unique(from: &Path, dir: &Path, name: &str) -> io::Result<PathBuf> {
+    loop {
+        let to = unique_name(dir, name);
+        match rename_noreplace(from, &to) {
+            Ok(()) => return Ok(to),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 /// `dest/name`, or `dest/name (N).ext` when that is taken. Multi-part
 /// extensions like `.tar.gz` stay together.
 pub fn unique_name(dest: &Path, name: &str) -> PathBuf {
@@ -348,6 +408,20 @@ pub fn unique_name(dest: &Path, name: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn place_unique_never_replaces() {
+        let d = std::env::temp_dir().join(format!("loaf-place-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("taken")).unwrap(); // empty dir: plain rename would replace it
+        fs::create_dir_all(d.join("src")).unwrap();
+        fs::write(d.join("src/f"), b"x").unwrap();
+        assert!(rename_noreplace(&d.join("src"), &d.join("taken")).is_err());
+        let to = place_unique(&d.join("src"), &d, "taken").unwrap();
+        assert_eq!(to, d.join("taken (2)"));
+        assert!(d.join("taken").is_dir() && d.join("taken (2)/f").is_file());
+        let _ = fs::remove_dir_all(&d);
+    }
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
     fn tmpdir(tag: &str) -> PathBuf {

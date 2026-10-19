@@ -10,7 +10,7 @@ LoafDialog {
     property string label: ""
     property string initialText: ""
     property string placeholder: ""
-    property string confirmText: "Save"
+    property string confirmText: qsTr("Save")
     property bool selectBasename: false
 
     signal accepted(string text)
@@ -86,7 +86,7 @@ LoafDialog {
         Item { Layout.fillWidth: true }
 
         LoafButton {
-            text: "Cancel"
+            text: qsTr("Cancel")
             variant: "text"
             onClicked: prompt.cancel()
         }

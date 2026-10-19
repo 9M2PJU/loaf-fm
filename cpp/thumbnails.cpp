@@ -18,6 +18,9 @@
 #include <QUrl>
 
 #include <QThread>
+#include <QWaitCondition>
+
+#include <cstring>
 
 #include <atomic>
 
@@ -155,9 +158,42 @@ QStringList expandExec(const QString &exec, const QString &input, const QString 
     return args;
 }
 
-// Avoid launching several heavy thumbnailers for the same file at once.
+// Avoid launching several heavy thumbnailers for the same file at once;
+// a second request waits for the first and then reads the cache.
 QMutex g_inflightMutex;
+QWaitCondition g_inflightDone;
 QSet<QString> g_inflight;
+// Set when the provider is destroyed: queued jobs return immediately.
+std::atomic<bool> g_shutdown{false};
+
+// file:// URI exactly as GLib's g_filename_to_uri() builds it, so the md5
+// cache key and Thumb::URI match Nautilus, Dolphin and friends. Works on the
+// raw file name bytes (non-UTF-8 names included).
+QByteArray glibFileUri(const QByteArray &rawPath)
+{
+    static const char *safe = "-_.!~*'()/&=:@+$,";
+    QByteArray out("file://");
+    for (unsigned char c : rawPath) {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c && std::strchr(safe, c))) {
+            out.append(char(c));
+        } else {
+            out.append('%');
+            out.append(QByteArray::number(c, 16).toUpper().rightJustified(2, '0'));
+        }
+    }
+    return out;
+}
+
+// Creates `dir` and missing parents with mode 0700 (thumbnail spec).
+void makePrivateDir(const QString &dir)
+{
+    if (QFileInfo(dir).isDir())
+        return;
+    makePrivateDir(QFileInfo(dir).absolutePath());
+    QDir().mkdir(dir, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+}
+
+enum class GenResult { Ok, Failed, Transient };
 
 class ThumbResponse : public QQuickImageResponse
 {
@@ -189,8 +225,10 @@ private:
 class ThumbWork
 {
 public:
-    ThumbWork(const QString &path, const QSize &requested, const std::atomic<bool> &cancelled)
-        : m_path(path), m_requested(requested), m_cancelled(cancelled) {}
+    ThumbWork(const QByteArray &rawPath, const QSize &requested, const std::atomic<bool> &cancelled)
+        : m_raw(rawPath), m_path(QFile::decodeName(rawPath)), m_requested(requested), m_cancelled(cancelled) {}
+
+    bool stopped() const { return m_cancelled.load() || g_shutdown.load(); }
 
     QImage m_image;
     QString m_error;
@@ -210,7 +248,7 @@ public:
         const int wanted = qMax(m_requested.width(), m_requested.height()) > 0
             ? qMax(m_requested.width(), m_requested.height()) : 128;
         const Flavor flavor = flavorFor(wanted);
-        const QByteArray uri = QUrl::fromLocalFile(fi.absoluteFilePath()).toEncoded();
+        const QByteArray uri = glibFileUri(m_raw);
         const QString md5 = QString::fromLatin1(QCryptographicHash::hash(uri, QCryptographicHash::Md5).toHex());
         const QString mtime = QString::number(fi.lastModified().toSecsSinceEpoch());
         const QString cached = root + QLatin1Char('/') + QLatin1String(flavor.dir) + QLatin1Char('/') + md5 + QStringLiteral(".png");
@@ -233,30 +271,44 @@ public:
                 return;
             }
         }
-        if (m_cancelled.load())
+        if (stopped())
             return;
 
-        // Only one job generates a given file at a time.
+        // Only one job generates a given file at a time; others wait for it.
         {
             QMutexLocker lock(&g_inflightMutex);
-            if (g_inflight.contains(cached)) {
-                m_error = QStringLiteral("busy");
+            bool waited = false;
+            while (g_inflight.contains(cached) && !stopped()) {
+                g_inflightDone.wait(&g_inflightMutex, 200);
+                waited = true;
+            }
+            if (waited) {
+                lock.unlock();
+                QImageReader r(cached);
+                if (r.canRead() && r.text(QStringLiteral("Thumb::MTime")) == mtime)
+                    return finish(r.read());
+                m_error = QStringLiteral("no thumbnail");
                 return;
             }
             g_inflight.insert(cached);
         }
-        QImage img = generate(fi, flavor.size, uri);
+        QImage img;
+        const GenResult result = generate(fi, flavor.size, uri, img);
         {
             QMutexLocker lock(&g_inflightMutex);
             g_inflight.remove(cached);
+            g_inflightDone.wakeAll();
         }
-        if (m_cancelled.load())
+        if (stopped())
             return; // not a real failure: don't write a fail marker
 
-        if (img.isNull()) {
-            QImage marker(1, 1, QImage::Format_ARGB32);
-            marker.fill(Qt::transparent);
-            store(marker, failMarker, uri, mtime);
+        if (result != GenResult::Ok) {
+            // Only remember real failures; timeouts and missing tools may work later.
+            if (result == GenResult::Failed) {
+                QImage marker(1, 1, QImage::Format_ARGB32);
+                marker.fill(Qt::transparent);
+                store(marker, failMarker, uri, mtime);
+            }
             m_error = QStringLiteral("no thumbnailer could handle this file");
             return;
         }
@@ -266,7 +318,7 @@ public:
         finish(img);
     }
 
-    QImage generate(const QFileInfo &fi, int size, const QByteArray &uri)
+    GenResult generate(const QFileInfo &fi, int size, const QByteArray &uri, QImage &img)
     {
         static QMimeDatabase db;
         const QMimeType mime = db.mimeTypeForFile(fi);
@@ -274,52 +326,56 @@ public:
         // Qt can decode it: scale while reading (JPEG decodes at 1/2..1/8).
         QImageReader reader(fi.absoluteFilePath());
         reader.setAutoTransform(true);
-        if (reader.canRead()) {
+        const bool qtFormat = reader.canRead();
+        if (qtFormat) {
             QSize full = reader.size();
             if (full.isValid() && (full.width() > size || full.height() > size))
                 reader.setScaledSize(full.scaled(size, size, Qt::KeepAspectRatio));
-            QImage img = reader.read();
+            img = reader.read();
             if (!img.isNull())
-                return img;
+                return GenResult::Ok;
         }
-        if (m_cancelled.load())
-            return {};
+        if (stopped())
+            return GenResult::Transient;
 
         // A system thumbnailer (ffmpegthumbnailer, evince, gdk-pixbuf, ...).
         const Thumbnailer *t = thumbnailerFor(mime);
         if (!t)
-            return {};
+            return GenResult::Failed;
         QTemporaryDir tmp;
         if (!tmp.isValid())
-            return {};
+            return GenResult::Transient;
         const QString out = tmp.filePath(QStringLiteral("thumb.png"));
         QStringList args = expandExec(t->exec, fi.absoluteFilePath(), QString::fromLatin1(uri), out, size);
         if (args.isEmpty())
-            return {};
+            return GenResult::Failed;
         QProcess proc;
         proc.setProgram(args.takeFirst());
         proc.setArguments(args);
-        proc.setProcessChannelMode(QProcess::MergedChannels);
+        proc.setStandardOutputFile(QProcess::nullDevice());
+        proc.setStandardErrorFile(QProcess::nullDevice());
         proc.start();
         if (!proc.waitForStarted(3000))
-            return {};
-        // Poll so a cancelled request (e.g. scrolled away) stops the tool.
+            return GenResult::Transient;
+        // Poll so a cancelled request (scrolled away, quitting) stops the tool.
         for (int waited = 0; waited < 15000; waited += 100) {
             if (proc.waitForFinished(100))
                 break;
-            if (m_cancelled.load()) {
+            if (stopped()) {
                 proc.kill();
                 proc.waitForFinished(1000);
-                return {};
+                return GenResult::Transient;
             }
         }
         if (proc.state() != QProcess::NotRunning) {
             proc.kill();
             proc.waitForFinished(1000);
-            return {};
+            return GenResult::Transient; // too slow (e.g. a network disk): retry later
         }
-        QImage img(out);
-        return img;
+        if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0)
+            return GenResult::Failed;
+        img = QImage(out);
+        return img.isNull() ? GenResult::Failed : GenResult::Ok;
     }
 
     static void store(const QImage &src, const QString &file, const QByteArray &uri, const QString &mtime)
@@ -328,9 +384,7 @@ public:
         img.setText(QStringLiteral("Thumb::URI"), QString::fromLatin1(uri));
         img.setText(QStringLiteral("Thumb::MTime"), mtime);
         img.setText(QStringLiteral("Software"), QStringLiteral("Loaf"));
-        QDir().mkpath(QFileInfo(file).absolutePath());
-        QFile::setPermissions(QFileInfo(file).absolutePath(),
-                              QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        makePrivateDir(QFileInfo(file).absolutePath());
         QSaveFile out(file);
         if (!out.open(QIODevice::WriteOnly))
             return;
@@ -358,6 +412,7 @@ public:
             m_image = img;
     }
 
+    QByteArray m_raw;
     QString m_path;
     QSize m_requested;
     const std::atomic<bool> &m_cancelled;
@@ -373,7 +428,15 @@ ThumbnailProvider::ThumbnailProvider()
     m_pool.setExpiryTimeout(30000);
 }
 
-ThumbRunnable::ThumbRunnable(const QString &path, const QSize &requested, std::shared_ptr<std::atomic<bool>> cancelled)
+ThumbnailProvider::~ThumbnailProvider()
+{
+    // Don't make quitting wait for queued thumbnails.
+    g_shutdown.store(true);
+    m_pool.clear();
+    m_pool.waitForDone();
+}
+
+ThumbRunnable::ThumbRunnable(const QByteArray &path, const QSize &requested, std::shared_ptr<std::atomic<bool>> cancelled)
     : m_path(path), m_requested(requested), m_cancelled(std::move(cancelled))
 {
     setAutoDelete(true);
@@ -382,18 +445,18 @@ ThumbRunnable::ThumbRunnable(const QString &path, const QSize &requested, std::s
 void ThumbRunnable::run()
 {
     ThumbWork work(m_path, m_requested, *m_cancelled);
-    if (!m_cancelled->load())
+    if (!m_cancelled->load() && !g_shutdown.load())
         work.produce();
     Q_EMIT done(work.m_image, work.m_error);
 }
 
 // id = hex(UTF-8/raw path bytes) "-" mtime; hex keeps any byte sequence
 // (spaces, '%', '#', non-UTF-8) unambiguous inside an image URL.
-static QString pathFromId(const QString &id)
+static QByteArray pathFromId(const QString &id)
 {
     const int dash = id.indexOf(QLatin1Char('-'));
     const QByteArray hex = (dash >= 0 ? id.left(dash) : id).toLatin1();
-    return QFile::decodeName(QByteArray::fromHex(hex));
+    return QByteArray::fromHex(hex);
 }
 
 QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &requestedSize)

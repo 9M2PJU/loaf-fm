@@ -53,8 +53,11 @@ Q_SIGNALS:
     void openRequested(const QStringList &paths, const QString &mode);
 
 private:
+    QVariantMap readClipboard() const;
+
     QStringList m_pending;
     QString m_mode = QStringLiteral("tab");
+    QVariantMap m_clipboard;
 };
 
 // org.freedesktop.FileManager1 (used by browsers' "Show in folder").
@@ -63,7 +66,7 @@ class FileManager1Adaptor : public QDBusAbstractAdaptor
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.FileManager1")
 public:
-    explicit FileManager1Adaptor(LoafNative *native);
+    FileManager1Adaptor(QObject *host, LoafNative *native);
 
 public Q_SLOTS:
     void ShowFolders(const QStringList &uris, const QString &startupId);
@@ -81,7 +84,7 @@ class LoafAppAdaptor : public QDBusAbstractAdaptor
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "io.github.m_uvex.Loaf")
 public:
-    explicit LoafAppAdaptor(LoafNative *native);
+    LoafAppAdaptor(QObject *host, LoafNative *native);
 
 public Q_SLOTS:
     void Open(const QStringList &paths, const QString &mode);

@@ -334,6 +334,9 @@ pub fn add_recent_in(content: &str, path: &Path, mime: &str, now: &str) -> Strin
 
 /// Records that Loaf opened `path` so other apps' "Recent" lists see it.
 pub fn add_recent(path: &Path, mime: &str) {
+    // Read-modify-write: one writer at a time or updates get lost.
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = util::lock(&LOCK);
     let file = recent_file();
     let content = fs::read_to_string(&file).unwrap_or_default();
     // Never rewrite a file we can't understand.

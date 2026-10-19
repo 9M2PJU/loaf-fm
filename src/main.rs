@@ -100,12 +100,11 @@ fn main() {
         Ok(path) if !path.is_empty() => QUrl::from(&format!("file://{path}")),
         _ => QUrl::from("qrc:/qt/qml/app/loaf/qml/main.qml"),
     };
-    let mode = if args.mini {
-        "mini"
-    } else if args.new_window {
-        "new-window"
-    } else {
-        "tab"
+    let mode = match (args.mini, args.new_window || admin) {
+        (true, true) => "mini,new-window",
+        (true, false) => "mini",
+        (false, true) => "tab,new-window",
+        (false, false) => "tab",
     };
     if let Some(mut engine) = engine.as_mut() {
         native::ffi::setup_engine(engine.as_mut(), &args.paths, mode);

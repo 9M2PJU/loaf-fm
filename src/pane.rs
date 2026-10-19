@@ -189,6 +189,23 @@ enum Loc {
 
 pub const ARCHIVE_SCHEME: &str = "archive://";
 
+/// Splits "archive://<file>#<member>" (without the scheme). Folder and file
+/// names may contain `#`, so the split is at the first `#` whose left side
+/// is an existing file.
+pub fn split_archive_url(rest: &str) -> (PathBuf, String) {
+    for (i, _) in rest.match_indices('#') {
+        let file = Path::new(&rest[..i]);
+        if file.is_file() {
+            return (file.to_path_buf(), rest[i + 1..].to_string());
+        }
+    }
+    if Path::new(rest).is_file() {
+        return (PathBuf::from(rest), String::new());
+    }
+    let (file, inner) = rest.split_once('#').unwrap_or((rest, ""));
+    (PathBuf::from(file), inner.to_string())
+}
+
 impl Loc {
     fn to_string(&self) -> String {
         match self {
@@ -210,8 +227,8 @@ impl Loc {
             _ => {}
         }
         if let Some(rest) = s.strip_prefix(ARCHIVE_SCHEME) {
-            let (file, inner) = rest.split_once('#').unwrap_or((rest, ""));
-            return Some(Loc::Archive { file: PathBuf::from(file), inner: inner.trim_matches('/').to_string() });
+            let (file, inner) = split_archive_url(rest);
+            return Some(Loc::Archive { file, inner: inner.trim_matches('/').to_string() });
         }
         let path = if let Some(rest) = s.strip_prefix("file://") {
             trash::decode_path(rest)
@@ -699,6 +716,7 @@ impl qobject::LoafEngine {
             self.as_mut().apply_rows(Vec::new(), true);
         }
         self.as_mut().set_loading(true);
+        let started = std::time::Instant::now();
         std::thread::spawn(move || {
             let cancelled = || gen_ref.load(Ordering::SeqCst) != gen;
             let mut new_cache = None;
@@ -748,6 +766,13 @@ impl qobject::LoafEngine {
                 }
                 if new_cache.is_some() {
                     pane.as_mut().rust_mut().archive_cache = new_cache;
+                }
+                // Space watcher refreshes to twice the scan time, so a big
+                // folder that keeps changing (a long copy into it) still
+                // finishes its scans instead of restarting them forever.
+                if let Some(w) = pane.watcher.as_ref() {
+                    let ms = (started.elapsed().as_millis() as u64 * 2).clamp(250, 10_000);
+                    w.min_interval_ms.store(ms, Ordering::Relaxed);
                 }
                 match result {
                     Ok(entries) => {

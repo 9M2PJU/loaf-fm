@@ -150,9 +150,22 @@ LoafPopup {
             menu.openSubmenuAt(index);
             return;
         }
-        if (typeof it.action === "function")
-            it.action();
-        menu.close();
+        // Close this menu and every parent first, then act: a dialog or an
+        // inline editor opened by the action must not lose focus to a menu.
+        var action = it.action;
+        menu.closeChain();
+        if (typeof action === "function")
+            action();
+    }
+
+    function closeChain() {
+        var m = menu;
+        while (m) {
+            var p = m.parentMenu;
+            m.hideSubmenuNow();
+            m.close();
+            m = p;
+        }
     }
 
     function rowWrapperFor(index) {
@@ -373,17 +386,17 @@ LoafPopup {
         implicitHeight: 0
         focus: true
 
-        Keys.onDownPressed: { menu.moveHighlight(1); event.accepted = true; }
-        Keys.onUpPressed: { menu.moveHighlight(-1); event.accepted = true; }
-        Keys.onReturnPressed: { menu.activateHighlight(); event.accepted = true; }
-        Keys.onEnterPressed: { menu.activateHighlight(); event.accepted = true; }
-        Keys.onRightPressed: { menu.openHighlightSubmenu(); event.accepted = true; }
-        Keys.onLeftPressed: {
+        Keys.onDownPressed: function(event) { menu.moveHighlight(1); event.accepted = true; }
+        Keys.onUpPressed: function(event) { menu.moveHighlight(-1); event.accepted = true; }
+        Keys.onReturnPressed: function(event) { menu.activateHighlight(); event.accepted = true; }
+        Keys.onEnterPressed: function(event) { menu.activateHighlight(); event.accepted = true; }
+        Keys.onRightPressed: function(event) { menu.openHighlightSubmenu(); event.accepted = true; }
+        Keys.onLeftPressed: function(event) {
             if (menu.isNestedMenu())
                 menu.close();
             event.accepted = true;
         }
-        Keys.onEscapePressed: { menu.handleEscape(); event.accepted = true; }
+        Keys.onEscapePressed: function(event) { menu.handleEscape(); event.accepted = true; }
     }
 
     Timer {

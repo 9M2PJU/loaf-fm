@@ -34,10 +34,37 @@ Item {
         onCurrent_pathChanged: {
             pane.clearSelection();
             pane.renamingPath = "";
+            // Pending selections belong to the folder they were made for.
+            pane.pendingSelect = [];
+            pane.pendingRename = false;
             if (theme.animate)
                 enterAnim.restart();
         }
         onLoaded: pane.afterLoad()
+        // Filtering and hidden-file toggles hide rows without a reload:
+        // hidden items must not stay selected (Delete would hit them).
+        onFilter_textChanged: Qt.callLater(pane.trimSelection)
+        onShow_hiddenChanged: Qt.callLater(pane.trimSelection)
+    }
+
+    // Apply right away when the items are already listed (the watcher may
+    // have reloaded before the operation reported back).
+    onPendingSelectChanged: if (pendingSelect.length > 0 && !paneEngine.loading) Qt.callLater(afterLoad)
+
+    function trimSelection() {
+        if (selectedCount === 0)
+            return;
+        var kept = JSON.parse(paneEngine.filter_existing(JSON.stringify(Object.keys(selection))));
+        if (kept.length !== selectedCount) {
+            var s = {};
+            for (var j = 0; j < kept.length; ++j)
+                s[kept[j]] = true;
+            selection = s;
+            if (!s[cursorPath])
+                cursorPath = kept.length > 0 ? kept[kept.length - 1] : "";
+            if (!s[anchorPath])
+                anchorPath = kept.length > 0 ? kept[0] : "";
+        }
     }
 
     function afterLoad() {
@@ -56,20 +83,16 @@ Item {
                 anchorPath = first;
                 cursorPath = first;
                 ensureVisible(paneEngine.row_of(first));
-                if (pendingRename)
-                    renamingPath = first;
+                if (pendingRename) {
+                    var target = first;
+                    Qt.callLater(function() { pane.renamingPath = target; });
+                }
                 pendingSelect = [];
                 pendingRename = false;
             }
-        } else if (selectedCount > 0) {
+        } else {
             // Drop paths that vanished (deleted / renamed elsewhere).
-            var kept = JSON.parse(paneEngine.filter_existing(JSON.stringify(Object.keys(selection))));
-            if (kept.length !== selectedCount) {
-                var s = {};
-                for (var j = 0; j < kept.length; ++j)
-                    s[kept[j]] = true;
-                selection = s;
-            }
+            trimSelection();
         }
     }
 
@@ -228,8 +251,16 @@ Item {
             renamingPath = paths[0];
     }
 
+    function cancelRename() {
+        renamingPath = "";
+        window.defocusInputs();
+    }
+
     function commitRename(path, newName) {
         renamingPath = "";
+        // The editor took keyboard focus; give it back to the window's key
+        // handler so arrows and type-to-filter keep working.
+        window.defocusInputs();
         var oldName = path.substring(path.lastIndexOf("/") + 1);
         if (newName.trim().length === 0 || newName === oldName)
             return;
@@ -336,11 +367,10 @@ Item {
                 font.bold: true
                 font.letterSpacing: -0.5
                 elide: Text.ElideRight
-                Layout.maximumWidth: Math.max(120, pane.width - 240)
+                Layout.fillWidth: true
+                Layout.minimumWidth: 60
                 Accessible.role: Accessible.Heading
             }
-
-            Item { Layout.fillWidth: true }
 
             Rectangle {
                 visible: pane.selectedCount > 0
@@ -413,13 +443,15 @@ Item {
 
             // Small spinner while a scan / search runs.
             LoafIcon {
+                id: spinner
                 visible: paneEngine.loading && paneEngine.item_count === 0 && paneEngine.error_text.length === 0
                 anchors.centerIn: parent
                 name: "hourglass"
                 size: 30
                 color: theme.textMuted
+                // Must stop when hidden: a running animator redraws every frame.
                 RotationAnimator on rotation {
-                    running: parent.visible && theme.animate
+                    running: spinner.visible && theme.animate
                     from: 0; to: 360; duration: 1200; loops: Animation.Infinite
                 }
             }
@@ -630,7 +662,7 @@ Item {
                         anchors.fill: parent
                         enabled: card.is_dir && !paneEngine.read_only
                         keys: ["text/uri-list"]
-                        onEntered: dragManager.hoverTarget = card.path
+                        onEntered: dragManager.hover(card.path, paneEngine)
                         onExited: if (dragManager.hoverTarget === card.path) dragManager.hoverTarget = ""
                         onDropped: function(drop) { pane.handleDropOn(drop, card.path, card); }
                     }
@@ -796,7 +828,7 @@ Item {
                                     originalName: card.name
                                     isDir: card.is_dir
                                     onCommit: function(text) { pane.commitRename(card.path, text); }
-                                    onCancel: pane.renamingPath = ""
+                                    onCancel: pane.cancelRename()
                                 }
                             }
                         }
@@ -828,7 +860,9 @@ Item {
                         onPositionChanged: function(mouse) {
                             if (dragging || !(mouse.buttons & (Qt.LeftButton | Qt.RightButton)) || pane.renamingPath === card.path)
                                 return;
-                            if (paneEngine.location_kind === "archive")
+                            // Archive members aren't real files; trashed
+                            // files must be restored, not dragged out.
+                            if (paneEngine.location_kind === "archive" || paneEngine.location_kind === "trash")
                                 return;
                             var dx = mouse.x - pressPt.x, dy = mouse.y - pressPt.y;
                             if (dx * dx + dy * dy >= 36) {
@@ -1124,7 +1158,7 @@ Item {
                                         isDir: row.is_dir
                                         horizontal: true
                                         onCommit: function(text) { pane.commitRename(row.path, text); }
-                                        onCancel: pane.renamingPath = ""
+                                        onCancel: pane.cancelRename()
                                     }
                                 }
                             }
@@ -1171,7 +1205,7 @@ Item {
                         anchors.fill: parent
                         enabled: row.is_dir && !paneEngine.read_only
                         keys: ["text/uri-list"]
-                        onEntered: dragManager.hoverTarget = row.path
+                        onEntered: dragManager.hover(row.path, paneEngine)
                         onExited: if (dragManager.hoverTarget === row.path) dragManager.hoverTarget = ""
                         onDropped: function(drop) { pane.handleDropOn(drop, row.path, row); }
                     }
@@ -1200,7 +1234,9 @@ Item {
                         onPositionChanged: function(mouse) {
                             if (dragging || !(mouse.buttons & (Qt.LeftButton | Qt.RightButton)) || pane.renamingPath === row.path)
                                 return;
-                            if (paneEngine.location_kind === "archive")
+                            // Archive members aren't real files; trashed
+                            // files must be restored, not dragged out.
+                            if (paneEngine.location_kind === "archive" || paneEngine.location_kind === "trash")
                                 return;
                             var dx = mouse.x - pressPt.x, dy = mouse.y - pressPt.y;
                             if (dx * dx + dy * dy >= 36) {

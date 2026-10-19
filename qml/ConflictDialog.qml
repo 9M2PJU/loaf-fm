@@ -13,18 +13,20 @@ LoafDialog {
     property var paths: []
     property string dest: ""
     property string mode: "copy"
+    property bool fromCut: false
 
-    function showFor(list, srcPaths, destDir, opMode) {
+    function showFor(list, srcPaths, destDir, opMode, cut) {
         conflicts = list;
         paths = srcPaths;
         dest = destDir;
         mode = opMode;
+        fromCut = !!cut;
         open();
     }
 
     function apply(resolution) {
         core.transfer(JSON.stringify(paths), dest, mode, resolution);
-        if (mode === "move")
+        if (fromCut)
             window.afterCutPaste();
         close();
     }

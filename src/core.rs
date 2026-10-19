@@ -283,11 +283,13 @@ struct Outcome {
     is_undo: bool,
     /// This op replays a redo entry: keep the redo stack.
     is_redo: bool,
+    /// Unfinished part of an undo/redo: goes back onto the stack it came from.
+    requeue: Option<UndoEntry>,
 }
 
 impl Outcome {
     fn ok(message: impl Into<String>) -> Self {
-        Outcome { ok: true, message: message.into(), undo: None, result: serde_json::Value::Null, is_undo: false, is_redo: false }
+        Outcome { ok: true, message: message.into(), undo: None, result: serde_json::Value::Null, is_undo: false, is_redo: false, requeue: None }
     }
     fn err(message: impl Into<String>) -> Self {
         Outcome { ok: false, ..Outcome::ok(message) }
@@ -316,6 +318,8 @@ pub struct CoreRust {
     next_op: u64,
     undo_stack: Vec<UndoEntry>,
     redo_stack: Vec<UndoEntry>,
+    /// An undo or redo is running; further requests wait for it.
+    history_running: bool,
     drives: Vec<drives::Drive>,
     size_generation: Arc<AtomicU64>,
     device_watcher: Option<watcher::DeviceWatcher>,
@@ -345,6 +349,7 @@ impl Default for CoreRust {
             next_op: 1,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            history_running: false,
             drives: Vec::new(),
             size_generation: Arc::new(AtomicU64::new(0)),
             device_watcher: None,
@@ -606,15 +611,29 @@ impl qobject::LoafCore {
                     self.as_mut().rust_mut().redo_stack.clear();
                 }
             }
-            if !outcome.is_undo && !outcome.message.is_empty() && outcome.ok {
-                self.as_mut().notify(q("undo"), q(&outcome.message));
-            } else if outcome.ok && !outcome.message.is_empty() {
-                self.as_mut().notify(q("info"), q(&outcome.message));
+        }
+        if let Some(entry) = outcome.requeue.clone() {
+            if outcome.is_undo {
+                self.as_mut().rust_mut().undo_stack.push(entry);
+            } else {
+                self.as_mut().rust_mut().redo_stack.push(entry);
             }
-        } else if cancelled {
+        }
+        if outcome.is_undo || outcome.is_redo {
+            self.as_mut().rust_mut().history_running = false;
+        }
+        // Failures are always reported, even when part of the work succeeded
+        // and can be undone.
+        if cancelled && outcome.undo.is_none() {
             self.as_mut().notify(q("info"), q("Cancelled"));
         } else if !outcome.message.is_empty() {
-            let kind_s = if outcome.ok { "info" } else { "error" };
+            let kind_s = if !outcome.ok {
+                "error"
+            } else if outcome.undo.is_some() && !outcome.is_undo {
+                "undo"
+            } else {
+                "info"
+            };
             self.as_mut().notify(q(kind_s), q(&outcome.message));
         }
         self.as_mut().sync_undo_props();
@@ -969,10 +988,16 @@ impl qobject::LoafCore {
     /// Extracts a file from an archive to a private temp folder and opens it.
     fn open_archive_member(self: Pin<&mut Self>, url: String) {
         let rest = &url[crate::pane::ARCHIVE_SCHEME.len()..];
-        let (file, member) = rest.split_once('#').unwrap_or((rest, ""));
-        let (file, member) = (PathBuf::from(file), member.to_string());
+        let (file, member) = crate::pane::split_archive_url(rest);
         let runtime = std::env::var("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir());
-        let target = runtime.join("loaf-archives").join(crate::pane::hex_path(&file.to_string_lossy()).chars().take(32).collect::<String>());
+        // One folder per archive: hash the whole path, not a prefix of it.
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            file.hash(&mut h);
+            format!("{:016x}", h.finish())
+        };
+        let target = runtime.join("loaf-archives").join(key);
         let thread = self.qt_thread();
         self.spawn_op("open", format!("Opening {}", Path::new(&member).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()), move |_op| {
             let pw = secret_get(&format!("archive:{}", file.to_string_lossy()));
@@ -1076,9 +1101,8 @@ impl qobject::LoafCore {
         }
         Self::push_recent_app(&format!("cmd:{}", trimmed));
         let p = PathBuf::from(path.to_string());
-        let expanded = apps::substitute_command_path(trimmed, &p);
         let mut cmd = std::process::Command::new("sh");
-        cmd.arg("-c").arg(&expanded);
+        cmd.arg("-c").arg(apps::command_script(trimmed)).arg("sh").arg(&p);
         if let Some(parent) = p.parent().filter(|d| d.is_dir()) {
             cmd.current_dir(parent);
         }
@@ -1385,7 +1409,19 @@ impl qobject::LoafCore {
         let fmt = format.to_string();
         let pass = password.to_string();
         let parent = items[0].parent().unwrap_or(Path::new("/")).to_path_buf();
-        let base = if items.len() == 1 { archive::base_name(&items[0]) } else { "Archive".into() };
+        let base = match items.len() {
+            1 if items[0].is_dir() => file_name(&items[0]),
+            1 => {
+                // "report.pdf" -> "report.zip"; archives keep their stem.
+                let b = archive::base_name(&items[0]);
+                if b == file_name(&items[0]) {
+                    items[0].file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or(b)
+                } else {
+                    b
+                }
+            }
+            _ => "Archive".into(),
+        };
         let ext = match fmt.as_str() {
             "zip" | "zip_encrypted" => "zip",
             "7z" => "7z",
@@ -1401,8 +1437,19 @@ impl qobject::LoafCore {
         self.spawn_op("compress", title, move |op| {
             // Items from other folders can't share relative names: skip them.
             let items: Vec<PathBuf> = items.into_iter().filter(|p| p.parent() == Some(parent.as_path())).collect();
-            match archive::compress(&target, &items, &fmt, &pass, &|| op.cancelled()) {
-                Ok(()) => {
+            // Build inside a private staging folder so a cancelled or failed
+            // run never leaves a broken archive, and two runs never write
+            // into the same file. Then move it to a free name.
+            let name = file_name(&target);
+            let staging = parent.join(format!(".loaf-compress-{}-{}", std::process::id(), op.id));
+            if let Err(e) = std::fs::create_dir(&staging) {
+                return Outcome::err(format!("Could not create the archive: {}", e));
+            }
+            let built = archive::compress(&staging.join(&name), &items, &fmt, &pass, &|| op.cancelled())
+                .and_then(|()| fsops::place_unique(&staging.join(&name), &parent, &name).map_err(|e| ArchiveError::Failed(e.to_string())));
+            let _ = fsops::remove_tree(&staging);
+            match built {
+                Ok(target) => {
                     fsops::sync_filesystem(&target);
                     let mut o = Outcome::ok(format!("Created “{}”", file_name(&target)));
                     o.undo = Some(UndoEntry { label: "Compress".into(), action: UndoAction::Create(vec![target.clone()]) });
@@ -1429,8 +1476,11 @@ impl qobject::LoafCore {
         let title = format!("Extracting “{}”", file_name(&arch));
         self.spawn_op("extract", title, move |op| {
             match extract_safely(&arch, &parent, into_subfolder, &pass, op.id, &|| op.cancelled()) {
-                Ok(created) => {
-                    let mut o = Outcome::ok(format!("Extracted “{}”", file_name(&arch)));
+                Ok((created, failed)) => {
+                    let mut o = match failed {
+                        None => Outcome::ok(format!("Extracted “{}”", file_name(&arch))),
+                        Some(e) => Outcome::err(format!("Extracted “{}” only partly: {}", file_name(&arch), e)),
+                    };
                     o.result = serde_json::json!({"created": created.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>()});
                     if !created.is_empty() {
                         o.undo = Some(UndoEntry { label: "Extract".into(), action: UndoAction::Create(created) });
@@ -1574,38 +1624,40 @@ impl qobject::LoafCore {
         }
     }
 
-    pub fn undo(mut self: Pin<&mut Self>) {
-        let Some(entry) = self.as_mut().rust_mut().undo_stack.pop() else { return };
-        self.as_mut().sync_undo_props();
-        let label = entry.label.clone();
-        self.spawn_op("undo", format!("Undoing {}", label), move |op| {
-            let mut o = match invert(&entry.action, op) {
-                Ok(redo) => {
-                    let mut o = Outcome::ok(format!("Undid {}", label));
-                    o.undo = redo.map(|a| UndoEntry { label: label.clone(), action: a });
-                    o
-                }
-                Err(e) => Outcome::err(format!("Could not undo {}: {}", label, e)),
-            };
-            o.is_undo = true;
-            o
-        });
+    pub fn undo(self: Pin<&mut Self>) {
+        self.undo_or_redo(true);
     }
 
-    pub fn redo(mut self: Pin<&mut Self>) {
-        let Some(entry) = self.as_mut().rust_mut().redo_stack.pop() else { return };
+    pub fn redo(self: Pin<&mut Self>) {
+        self.undo_or_redo(false);
+    }
+
+    /// One undo/redo at a time: steps depend on each other ("rename a→b"
+    /// then "move b→dir/b" must be reverted in order).
+    fn undo_or_redo(mut self: Pin<&mut Self>, is_undo: bool) {
+        if self.history_running {
+            return;
+        }
+        let entry = if is_undo { self.as_mut().rust_mut().undo_stack.pop() } else { self.as_mut().rust_mut().redo_stack.pop() };
+        let Some(entry) = entry else { return };
+        self.as_mut().rust_mut().history_running = true;
         self.as_mut().sync_undo_props();
         let label = entry.label.clone();
-        self.spawn_op("redo", format!("Redoing {}", label), move |op| {
-            let mut o = match replay(&entry.action, op) {
-                Ok(undo) => {
-                    let mut o = Outcome::ok(format!("Redid {}", label));
-                    o.undo = undo.map(|a| UndoEntry { label: label.clone(), action: a });
-                    o
-                }
-                Err(e) => Outcome::err(format!("Could not redo {}: {}", label, e)),
+        let (kind, doing, did, fail) = if is_undo {
+            ("undo", "Undoing", "Undid", "Could not undo")
+        } else {
+            ("redo", "Redoing", "Redid", "Could not redo")
+        };
+        self.spawn_op(kind, format!("{} {}", doing, label), move |op| {
+            let p = if is_undo { invert(&entry.action, op) } else { replay(&entry.action, op) };
+            let mut o = match &p.error {
+                None => Outcome::ok(format!("{} {}", did, label)),
+                Some(e) => Outcome::err(format!("{} {}: {}", fail, label, e)),
             };
-            o.is_redo = true;
+            o.undo = p.reverse.map(|a| UndoEntry { label: label.clone(), action: a });
+            o.requeue = p.rest.map(|a| UndoEntry { label: label.clone(), action: a });
+            o.is_undo = is_undo;
+            o.is_redo = !is_undo;
             o
         });
     }
@@ -1671,7 +1723,7 @@ fn extract_safely(
     pass: &str,
     tag: u64,
     cancelled: &dyn Fn() -> bool,
-) -> Result<Vec<PathBuf>, ArchiveError> {
+) -> Result<(Vec<PathBuf>, Option<String>), ArchiveError> {
     let staging = parent.join(format!(".loaf-extract-{}-{}", std::process::id(), tag));
     let result = archive::extract(arch, &staging, pass, cancelled);
     if let Err(e) = result {
@@ -1682,32 +1734,26 @@ fn extract_safely(
         .map(|r| r.flatten().map(|e| e.path()).collect())
         .unwrap_or_default();
     let mut created = Vec::new();
-    let mut place = |from: &Path, name: &str| -> Result<(), ArchiveError> {
-        let to = fsops::unique_name(parent, name);
-        std::fs::rename(from, &to).map_err(|e| ArchiveError::Failed(e.to_string()))?;
-        created.push(to);
-        Ok(())
-    };
-    let outcome = if into_subfolder && !(entries.len() == 1 && entries[0].is_dir()) {
-        // Several entries (or one file): wrap them in a folder.
-        place(&staging, &archive::base_name(arch))
-    } else {
-        let mut res = Ok(());
-        for e in &entries {
-            if let Err(err) = place(e, &file_name(e)) {
-                res = Err(err);
-                break;
-            }
+    let mut failed: Option<String> = None;
+    let mut place = |from: &Path, name: &str| match fsops::place_unique(from, parent, name) {
+        Ok(to) => created.push(to),
+        Err(e) => {
+            failed.get_or_insert(format!("{}: {}", name, e));
         }
-        let _ = std::fs::remove_dir(&staging);
-        res
     };
-    if let Err(e) = outcome {
-        let _ = fsops::remove_tree(&staging);
-        return Err(e);
+    if into_subfolder && !(entries.len() == 1 && entries[0].is_dir()) {
+        // Several entries (or one file): wrap them in a folder.
+        place(&staging, &archive::base_name(arch));
+    } else {
+        // Keep going after a failure so everything that did land is
+        // reported and can be undone.
+        for e in &entries {
+            place(e, &file_name(e));
+        }
     }
+    let _ = fsops::remove_tree(&staging);
     fsops::sync_filesystem(parent);
-    Ok(created)
+    Ok((created, failed))
 }
 
 /// Renames several items at once; swaps (a->b, b->a) work because every
@@ -1788,12 +1834,8 @@ fn run_transfer(op: &Op, sources: Vec<PathBuf>, dest: PathBuf, mode: &str, res: 
             (plain, false)
         };
         let result = match (mode, overwrite) {
-            ("link", _) => {
-                if overwrite {
-                    let _ = fsops::remove_tree(&target);
-                }
-                std::os::unix::fs::symlink(src, &target)
-            }
+            ("link", true) => fsops::replace_with_link(src, &target),
+            ("link", false) => std::os::unix::fs::symlink(src, &target),
             ("move", false) => fsops::move_path(src, &target, op),
             ("move", true) => fsops::replace(src, &target, true, op),
             (_, false) => fsops::copy_tree(src, &target, op),
@@ -1847,57 +1889,114 @@ fn run_transfer(op: &Op, sources: Vec<PathBuf>, dest: PathBuf, mode: &str, res: 
     o
 }
 
-/// Reverses an action. Returns the action that would redo it.
-fn invert(action: &UndoAction, op: &Op) -> Result<Option<UndoAction>, String> {
+/// Result of undoing or redoing an action that may stop partway.
+struct Partial {
+    /// Reverses what was done (goes to the opposite stack).
+    reverse: Option<UndoAction>,
+    /// The part that was not processed (goes back onto the same stack).
+    rest: Option<UndoAction>,
+    error: Option<String>,
+}
+
+impl Partial {
+    fn done(reverse: UndoAction) -> Self {
+        Partial { reverse: Some(reverse), rest: None, error: None }
+    }
+    fn stopped(reverse: Option<UndoAction>, rest: Option<UndoAction>, error: String) -> Self {
+        Partial { reverse, rest, error: Some(error) }
+    }
+}
+
+fn some_if<T>(v: Vec<T>, wrap: impl FnOnce(Vec<T>) -> UndoAction) -> Option<UndoAction> {
+    if v.is_empty() { None } else { Some(wrap(v)) }
+}
+
+/// Reverses an action.
+fn invert(action: &UndoAction, op: &Op) -> Partial {
     match action {
         UndoAction::Rename(pairs) => {
             let back: Vec<(PathBuf, PathBuf)> = pairs.iter().map(|(f, t)| (t.clone(), f.clone())).collect();
-            batch_rename_pairs(&back)?;
-            Ok(Some(action.clone()))
+            match batch_rename_pairs(&back) {
+                Ok(()) => Partial::done(action.clone()),
+                Err(e) => Partial::stopped(None, Some(action.clone()), e),
+            }
         }
-        UndoAction::Create(_) | UndoAction::Copy(_) => {
+        UndoAction::Create(paths) => {
             // Never destroy data on undo: created items go to the trash.
-            let list: Vec<PathBuf> = match action {
-                UndoAction::Create(p) => p.clone(),
-                UndoAction::Copy(pairs) => pairs.iter().map(|(_, t)| t.clone()).collect(),
-                _ => Vec::new(),
-            };
-            for p in &list {
+            for (i, p) in paths.iter().enumerate() {
                 if std::fs::symlink_metadata(p).is_ok() {
-                    trash::trash(p).map_err(|e| format!("{}: {}", file_name(p), e))?;
+                    if let Err(e) = trash::trash(p) {
+                        return Partial::stopped(
+                            some_if(paths[..i].to_vec(), UndoAction::Create),
+                            some_if(paths[i..].to_vec(), UndoAction::Create),
+                            format!("{}: {}", file_name(p), e),
+                        );
+                    }
                 }
             }
-            Ok(Some(action.clone()))
+            Partial::done(action.clone())
+        }
+        UndoAction::Copy(pairs) => {
+            for (i, (_, t)) in pairs.iter().enumerate() {
+                if std::fs::symlink_metadata(t).is_ok() {
+                    if let Err(e) = trash::trash(t) {
+                        return Partial::stopped(
+                            some_if(pairs[..i].to_vec(), UndoAction::Copy),
+                            some_if(pairs[i..].to_vec(), UndoAction::Copy),
+                            format!("{}: {}", file_name(t), e),
+                        );
+                    }
+                }
+            }
+            Partial::done(action.clone())
         }
         UndoAction::Move(pairs) => {
-            for (from, to) in pairs.iter().rev() {
-                if std::fs::symlink_metadata(from).is_ok() {
-                    return Err(format!("“{}” exists again at its old place", file_name(from)));
+            for idx in (0..pairs.len()).rev() {
+                let (from, to) = &pairs[idx];
+                let err = if std::fs::symlink_metadata(from).is_ok() {
+                    Some(format!("“{}” exists again at its old place", file_name(from)))
+                } else {
+                    fsops::move_path(to, from, op).err().map(|e| format!("{}: {}", file_name(to), e))
+                };
+                if let Some(e) = err {
+                    return Partial::stopped(
+                        some_if(pairs[idx + 1..].to_vec(), UndoAction::Move),
+                        some_if(pairs[..=idx].to_vec(), UndoAction::Move),
+                        e,
+                    );
                 }
-                fsops::move_path(to, from, op).map_err(|e| format!("{}: {}", file_name(to), e))?;
             }
-            Ok(Some(action.clone()))
+            Partial::done(action.clone())
         }
         UndoAction::Trash(items) => {
             let mut restored = Vec::new();
-            for it in items {
+            for (i, it) in items.iter().enumerate() {
                 match trash::restore(it) {
-                    Ok(_) => restored.push(it.clone()),
-                    Err(e) => return Err(format!("{}: {}", file_name(&it.original), e)),
+                    // Remember where it really landed ("a (2).txt" when the
+                    // old name was taken) so Redo trashes this file, not
+                    // whatever now lives at the old name.
+                    Ok(to) => restored.push(trash::TrashedItem { original: to, ..it.clone() }),
+                    Err(e) => {
+                        return Partial::stopped(
+                            some_if(restored, UndoAction::Trash),
+                            some_if(items[i..].to_vec(), UndoAction::Trash),
+                            format!("{}: {}", file_name(&it.original), e),
+                        )
+                    }
                 }
             }
-            Ok(Some(UndoAction::Trash(restored)))
+            Partial::done(UndoAction::Trash(restored))
         }
     }
 }
 
-/// Performs an action again. Returns the action that would undo it.
-fn replay(action: &UndoAction, op: &Op) -> Result<Option<UndoAction>, String> {
+/// Performs an action again.
+fn replay(action: &UndoAction, op: &Op) -> Partial {
     match action {
-        UndoAction::Rename(pairs) => {
-            batch_rename_pairs(pairs)?;
-            Ok(Some(action.clone()))
-        }
+        UndoAction::Rename(pairs) => match batch_rename_pairs(pairs) {
+            Ok(()) => Partial::done(action.clone()),
+            Err(e) => Partial::stopped(None, Some(action.clone()), e),
+        },
         UndoAction::Create(paths) => {
             // Bring the created items back out of the trash when possible.
             let records = trash::list();
@@ -1910,38 +2009,56 @@ fn replay(action: &UndoAction, op: &Op) -> Result<Option<UndoAction>, String> {
                 }
             }
             if back.is_empty() {
-                return Err("the items are no longer in the trash".into());
+                return Partial::stopped(None, None, "the items are no longer in the trash".into());
             }
-            Ok(Some(UndoAction::Create(back)))
+            Partial::done(UndoAction::Create(back))
         }
         UndoAction::Copy(pairs) => {
             let mut made = Vec::new();
-            for (src, dst) in pairs {
+            for (i, (src, dst)) in pairs.iter().enumerate() {
                 let target = if std::fs::symlink_metadata(dst).is_ok() {
                     fsops::unique_name(dst.parent().unwrap_or(Path::new("/")), &file_name(dst))
                 } else {
                     dst.clone()
                 };
-                fsops::copy_tree(src, &target, op).map_err(|e| format!("{}: {}", file_name(src), e))?;
+                if let Err(e) = fsops::copy_tree(src, &target, op) {
+                    return Partial::stopped(
+                        some_if(made, UndoAction::Copy),
+                        some_if(pairs[i..].to_vec(), UndoAction::Copy),
+                        format!("{}: {}", file_name(src), e),
+                    );
+                }
                 made.push((src.clone(), target));
             }
-            Ok(Some(UndoAction::Copy(made)))
+            Partial::done(UndoAction::Copy(made))
         }
         UndoAction::Move(pairs) => {
-            for (from, to) in pairs {
-                fsops::move_path(from, to, op).map_err(|e| format!("{}: {}", file_name(from), e))?;
+            for (i, (from, to)) in pairs.iter().enumerate() {
+                if let Err(e) = fsops::move_path(from, to, op) {
+                    return Partial::stopped(
+                        some_if(pairs[..i].to_vec(), UndoAction::Move),
+                        some_if(pairs[i..].to_vec(), UndoAction::Move),
+                        format!("{}: {}", file_name(from), e),
+                    );
+                }
             }
-            Ok(Some(action.clone()))
+            Partial::done(action.clone())
         }
         UndoAction::Trash(items) => {
             let mut again = Vec::new();
-            for it in items {
+            for (i, it) in items.iter().enumerate() {
                 match trash::trash(&it.original) {
                     Ok(t) => again.push(t),
-                    Err(e) => return Err(format!("{}: {}", file_name(&it.original), e)),
+                    Err(e) => {
+                        return Partial::stopped(
+                            some_if(again, UndoAction::Trash),
+                            some_if(items[i..].to_vec(), UndoAction::Trash),
+                            format!("{}: {}", file_name(&it.original), e),
+                        )
+                    }
                 }
             }
-            Ok(Some(UndoAction::Trash(again)))
+            Partial::done(UndoAction::Trash(again))
         }
     }
 }
@@ -1999,13 +2116,13 @@ mod tests {
         let arch = out.join("demo.tar.gz");
 
         // Extract Here next to an existing "demo": the old one is untouched.
-        let here = extract_safely(&arch, &out, false, "", 1, &|| false).unwrap();
+        let here = extract_safely(&arch, &out, false, "", 1, &|| false).unwrap().0;
         assert_eq!(std::fs::read(out.join("demo/sub/a.txt")).unwrap(), b"precious");
         assert_eq!(here, vec![out.join("demo (2)")]);
         assert_eq!(std::fs::read(out.join("demo (2)/sub/a.txt")).unwrap(), b"new");
 
         // Extract to Folder with a single top-level folder: no demo/demo.
-        let sub = extract_safely(&arch, &out, true, "", 2, &|| false).unwrap();
+        let sub = extract_safely(&arch, &out, true, "", 2, &|| false).unwrap().0;
         assert_eq!(sub, vec![out.join("demo (3)")]);
         assert!(out.join("demo (3)/sub/a.txt").exists());
         // No staging folders are left behind.

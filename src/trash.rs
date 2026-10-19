@@ -123,15 +123,31 @@ fn is_sticky_real_dir(p: &Path) -> bool {
     }
 }
 
+/// A real directory (not a symlink) owned by us. Trash folders on removable
+/// drives are untrusted: a planted `files -> ~/Documents` link must never be
+/// followed by Empty Trash.
+fn owned_real_dir(p: &Path) -> bool {
+    fs::symlink_metadata(p).map(|m| m.is_dir() && m.uid() == uid()).unwrap_or(false)
+}
+
+/// Whether `root/files` and `root/info` are safe to read and delete from.
+fn usable_trash(root: &Path) -> bool {
+    owned_real_dir(&root.join("files")) && owned_real_dir(&root.join("info"))
+}
+
 fn ensure_trash_dirs(root: &Path) -> io::Result<()> {
     for sub in ["files", "info"] {
         let d = root.join(sub);
-        if !d.is_dir() {
+        if fs::symlink_metadata(&d).is_err() {
             fs::create_dir_all(&d)?;
             let _ = fs::set_permissions(&d, fs::Permissions::from_mode(0o700));
         }
     }
-    Ok(())
+    if usable_trash(root) {
+        Ok(())
+    } else {
+        Err(io::Error::new(io::ErrorKind::PermissionDenied, "unsafe trash directory"))
+    }
 }
 
 /// Picks (and creates if needed) the trash directory for a path on another
@@ -140,7 +156,7 @@ fn topdir_trash(topdir: &Path, create: bool) -> Option<PathBuf> {
     let shared = topdir.join(".Trash");
     if is_sticky_real_dir(&shared) {
         let mine = shared.join(uid().to_string());
-        if mine.is_dir() || (create && fs::create_dir(&mine).is_ok()) {
+        if owned_real_dir(&mine) || (create && fs::create_dir(&mine).is_ok()) {
             if !create || ensure_trash_dirs(&mine).is_ok() {
                 return Some(mine);
             }
@@ -327,6 +343,9 @@ fn list_in(roots: &[PathBuf]) -> Vec<TrashedItem> {
     for root in roots {
         let root = root.as_path();
         let top = root_topdir(root);
+        if !usable_trash(root) {
+            continue;
+        }
         let Ok(rd) = fs::read_dir(root.join("info")) else { continue };
         for entry in rd.flatten() {
             let fname = entry.file_name().to_string_lossy().to_string();
@@ -337,10 +356,17 @@ fn list_in(roots: &[PathBuf]) -> Vec<TrashedItem> {
             }
             let Ok(content) = fs::read_to_string(entry.path()) else { continue };
             let Some((p, deleted)) = parse_info(&content) else { continue };
-            let original = if p.is_absolute() {
-                p
-            } else {
-                top.as_ref().map(|t| t.join(&p)).unwrap_or(p)
+            // Never let a record restore outside its own drive (or, for
+            // the home trash, use a relative path with `..` tricks).
+            if p.components().any(|c| c == std::path::Component::ParentDir) {
+                continue;
+            }
+            let original = match (&top, p.is_absolute()) {
+                (None, true) => p,
+                (None, false) => continue,
+                (Some(t), false) => t.join(&p),
+                (Some(t), true) if p.starts_with(t) => p,
+                (Some(_), true) => continue,
             };
             out.push(TrashedItem { original, trashed, info: entry.path(), deleted });
         }
@@ -395,6 +421,9 @@ pub fn empty_all() -> io::Result<()> {
 fn empty_in(roots: &[PathBuf]) -> io::Result<()> {
     let mut first_err = None;
     for root in roots {
+        if !usable_trash(root) {
+            continue;
+        }
         for sub in ["files", "info"] {
             let Ok(rd) = fs::read_dir(root.join(sub)) else { continue };
             for e in rd.flatten() {
@@ -450,6 +479,30 @@ mod tests {
         assert_eq!(unescape_mount("/run/media/u/Extra\\040Volume"), "/run/media/u/Extra Volume");
         assert_eq!(unescape_mount("/a\\04"), "/a\\04");
         assert_eq!(unescape_mount("/a\\777b"), "/a\\777b");
+    }
+
+    // A drive with `.Trash-$uid/files -> victim` must not let Empty Trash
+    // (or Restore via `..` paths) reach outside the trash.
+    #[test]
+    fn planted_trash_symlinks_are_ignored() {
+        let d = sandbox("planted");
+        let victim = d.join("victim");
+        fs::create_dir_all(victim.join("docs")).unwrap();
+        fs::write(victim.join("docs/keep.txt"), b"x").unwrap();
+        let root = d.join(format!(".Trash-{}", uid()));
+        fs::create_dir_all(root.join("info")).unwrap();
+        std::os::unix::fs::symlink(&victim, root.join("files")).unwrap();
+        fs::write(root.join("info/docs.trashinfo"), "[Trash Info]\nPath=docs\n").unwrap();
+        assert!(list_in(&[root.clone()]).is_empty());
+        empty_in(&[root.clone()]).unwrap();
+        assert!(victim.join("docs/keep.txt").exists());
+
+        let root2 = d.join("t2");
+        fs::create_dir_all(root2.join("files/x")).unwrap();
+        fs::create_dir_all(root2.join("info")).unwrap();
+        fs::write(root2.join("info/x.trashinfo"), "[Trash Info]\nPath=../../etc/x\n").unwrap();
+        assert!(list_in(&[root2]).is_empty());
+        let _ = fs::remove_dir_all(&d);
     }
 
     #[test]

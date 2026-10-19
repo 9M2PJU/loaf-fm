@@ -25,14 +25,14 @@ class ThumbRunnable : public QObject, public QRunnable
 {
     Q_OBJECT
 public:
-    ThumbRunnable(const QString &path, const QSize &requested, std::shared_ptr<std::atomic<bool>> cancelled);
+    ThumbRunnable(const QByteArray &path, const QSize &requested, std::shared_ptr<std::atomic<bool>> cancelled);
     void run() override;
 
 Q_SIGNALS:
     void done(const QImage &image, const QString &error);
 
 private:
-    QString m_path;
+    QByteArray m_path; // raw file name bytes
     QSize m_requested;
     std::shared_ptr<std::atomic<bool>> m_cancelled;
 };
@@ -41,6 +41,7 @@ class ThumbnailProvider : public QQuickAsyncImageProvider
 {
 public:
     ThumbnailProvider();
+    ~ThumbnailProvider() override;
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override;
 
 private:
