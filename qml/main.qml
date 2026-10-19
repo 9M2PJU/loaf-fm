@@ -4418,62 +4418,6 @@ ApplicationWindow {
     }
 
     // ==========================================
-    // INPUT MODAL (New Folder, New File, Rename)
-    // ==========================================
-    LoafTextPrompt {
-        id: inputModal
-
-        property string mode: "new_folder"
-        property string targetItemName: ""
-
-        function showNewFolder() {
-            mode = "new_folder";
-            title = "New Folder";
-            label = "Enter a name for the new folder";
-            placeholder = "Folder name";
-            initialText = "New Folder";
-            confirmText = "Save";
-            selectBasename = false;
-            open();
-        }
-
-        function showNewFile() {
-            mode = "new_file";
-            title = "New File";
-            label = "Enter a name for the new file";
-            placeholder = "File name";
-            initialText = "Untitled.txt";
-            confirmText = "Save";
-            selectBasename = false;
-            open();
-        }
-
-        function showRename(oldName) {
-            mode = "rename";
-            targetItemName = oldName;
-            title = "Rename";
-            label = "Enter a new name";
-            initialText = oldName;
-            confirmText = "Rename";
-            selectBasename = true;
-            open();
-        }
-
-        onAccepted: function(text) {
-            var val = (text || "").trim();
-            if (val.length === 0)
-                return;
-            if (mode === "new_folder") {
-                engine.create_folder(engine.current_path, val);
-            } else if (mode === "new_file") {
-                engine.create_file(engine.current_path, val);
-            } else if (mode === "rename") {
-                engine.rename_item(engine.current_path, targetItemName, val);
-            }
-        }
-    }
-
-    // ==========================================
     // CUSTOM COMMAND MODAL (Open With → Run Command)
     // ==========================================
     LoafTextPrompt {
