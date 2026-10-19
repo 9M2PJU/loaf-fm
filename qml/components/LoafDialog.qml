@@ -49,8 +49,8 @@ Popup {
         border.color: theme.borderSubtle
         border.width: 1
 
-        Behavior on color { ColorAnimation { duration: theme.durationNormal } }
-        Behavior on border.color { ColorAnimation { duration: theme.durationNormal } }
+        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
+        Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
     }
 
     contentItem: ColumnLayout {
@@ -63,7 +63,7 @@ Popup {
             visible: dialog.title.length > 0
             text: dialog.title
             color: theme.textMain
-            font.pixelSize: 18
+            font.pixelSize: theme.fs(18)
             font.bold: true
             elide: Text.ElideRight
             Layout.fillWidth: true

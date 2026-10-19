@@ -15,6 +15,8 @@ Item {
     transformOrigin: Item.Center
 
     property string icon: ""
+    // Image icon (e.g. an application's icon); takes precedence over `icon`.
+    property string iconUrl: ""
     property string text: ""
     property string shortcut: ""
     property bool danger: false
@@ -138,7 +140,7 @@ Item {
             ? (root.danger ? theme.dangerContainer : theme.menuItemHover)
             : "transparent"
 
-        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on color { enabled: theme.animate; ColorAnimation { duration: 100 } }
     }
 
     RowLayout {
@@ -149,16 +151,27 @@ Item {
         opacity: root.enabled ? 1.0 : 0.45
 
         LoafIcon {
-            visible: root.icon.length > 0
+            visible: root.icon.length > 0 && root.iconUrl.length === 0
             name: root.icon
             size: 16
             color: root.danger ? theme.danger : theme.textMain
         }
 
+        Image {
+            visible: root.iconUrl.length > 0
+            source: root.iconUrl
+            Layout.preferredWidth: 16
+            Layout.preferredHeight: 16
+            sourceSize.width: 32
+            sourceSize.height: 32
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+        }
+
         Text {
             text: root.text
             color: root.danger ? theme.danger : theme.textMain
-            font.pixelSize: 13
+            font.pixelSize: theme.fs(13)
             Layout.fillWidth: true
             elide: Text.ElideRight
         }
@@ -181,7 +194,7 @@ Item {
             visible: root.showTrailingShortcut
             text: root.shortcut
             color: theme.outline
-            font.pixelSize: 11
+            font.pixelSize: theme.fs(11)
         }
     }
 

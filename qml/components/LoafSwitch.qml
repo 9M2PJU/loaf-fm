@@ -23,7 +23,7 @@ Item {
         Text {
             text: root.label
             color: theme.textMain
-            font.pixelSize: 13
+            font.pixelSize: theme.fs(13)
             Layout.fillWidth: true
             elide: Text.ElideRight
         }
@@ -38,8 +38,8 @@ Item {
             border.width: root.checked ? 0 : 1
             border.color: theme.outline
 
-            Behavior on color { ColorAnimation { duration: 140 } }
-            Behavior on border.width { NumberAnimation { duration: 140 } }
+            Behavior on color { enabled: theme.animate; ColorAnimation { duration: 140 } }
+            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: 140 } }
 
             Rectangle {
                 id: thumb
@@ -50,9 +50,9 @@ Item {
                 x: root.checked ? (track.width - width - 4) : 4
                 color: root.checked ? theme.primaryFg : theme.outline
 
-                Behavior on x { SpringAnimation { spring: 4; damping: 0.7 } }
-                Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                Behavior on color { ColorAnimation { duration: 140 } }
+                Behavior on x { enabled: theme.animate; SpringAnimation { spring: 4; damping: 0.7 } }
+                Behavior on width { enabled: theme.animate; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                Behavior on color { enabled: theme.animate; ColorAnimation { duration: 140 } }
             }
 
             MouseArea {
