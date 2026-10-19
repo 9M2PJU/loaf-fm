@@ -59,7 +59,14 @@ GTK bookmarks, Recent and Starred files, and a low-power mode for older
 computers.
 
 %prep
+%if 0%{?_prebuilt:1}
+# Prebuilt: take the binary and assets straight from the checkout.
+%setup -q -c -T -n %{name}-%{version}
+cp -a "%{_sourcedir}/packaging" "%{_sourcedir}/README.md" .
+install -Dm755 "%{_sourcedir}/target/release/loaf" target/release/loaf
+%else
 %autosetup -n %{name}-%{version}
+%endif
 
 %build
 %if 0%{!?_prebuilt:1}
@@ -68,11 +75,7 @@ cargo build --release --locked
 %endif
 
 %install
-%if 0%{?_prebuilt:1}
-install -Dm755 %{_sourcedir}/target/release/loaf %{buildroot}%{_bindir}/loaf
-%else
 install -Dm755 target/release/loaf %{buildroot}%{_bindir}/loaf
-%endif
 install -Dm644 packaging/assets/loaf.desktop %{buildroot}%{_datadir}/applications/loaf.desktop
 for sz in 16 32 48 64 128 256 512; do
     install -Dm644 packaging/assets/icons/hicolor/${sz}x${sz}/apps/loaf.png \
