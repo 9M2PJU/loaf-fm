@@ -1479,11 +1479,13 @@ ApplicationWindow {
                             id: pane0Container
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.preferredWidth: window.splitView ? Math.round((paneRow.width - paneRow.spacing) / 2) : paneRow.width
                             radius: theme.radiusXl
                             color: theme.surfaceContainerLow
                             clip: true
                             border.width: (window.splitView && window.activePane === pane0) ? 2 : (window.splitView ? 1 : (window.keyboardNavActive ? 2 : 0))
                             border.color: (window.splitView && window.activePane === pane0) ? theme.primary : (window.splitView ? theme.outlineVariant : theme.primary)
+                            Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
                             Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                             Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
 
@@ -1504,6 +1506,8 @@ ApplicationWindow {
                             Layout.preferredWidth: window.splitView ? Math.round((paneRow.width - paneRow.spacing) / 2) : 0
                             visible: width > 2
                             opacity: window.splitView ? 1.0 : 0.0
+                            scale: window.splitView ? 1.0 : 0.92
+                            transformOrigin: Item.Right
                             radius: theme.radiusXl
                             color: theme.surfaceContainerLow
                             clip: true
@@ -1511,6 +1515,7 @@ ApplicationWindow {
                             border.color: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? theme.primary : theme.outlineVariant
 
                             Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
+                            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
                             Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                             Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                             Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }

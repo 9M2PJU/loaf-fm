@@ -105,6 +105,13 @@ LoafPopup {
             if (c && c.visible && (typeof c.playPop === "function" || typeof c.popIn === "function"))
                 out.push(c);
         }
+        if (contentHost && contentHost.children) {
+            for (var j = 0; j < contentHost.children.length; j++) {
+                var ch = contentHost.children[j];
+                if (ch && ch.visible && ch !== rowsView && (typeof ch.playPop === "function" || typeof ch.popIn === "function"))
+                    out.push(ch);
+            }
+        }
         return out;
     }
 

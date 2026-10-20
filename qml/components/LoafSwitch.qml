@@ -16,6 +16,37 @@ Item {
 
     signal toggled(bool checked)
 
+    transform: Translate { id: switchTranslate; y: 0 }
+
+    ParallelAnimation {
+        id: switchPopAnim
+        property int delayMs: 0
+        SequentialAnimation {
+            PauseAnimation { duration: switchPopAnim.delayMs }
+            ParallelAnimation {
+                NumberAnimation { target: switchTranslate; property: "y"; from: -10; to: 0; duration: 200; easing.type: Easing.OutCubic }
+                NumberAnimation { target: root; property: "scale"; from: 0.90; to: 1.0; duration: 220; easing.type: Easing.OutBack; easing.overshoot: 1.2 }
+                NumberAnimation { target: root; property: "opacity"; from: 0.0; to: 1.0; duration: 160; easing.type: Easing.OutCubic }
+            }
+        }
+    }
+
+    function popIn(delayMs) {
+        switchPopAnim.stop();
+        switchTranslate.y = -10;
+        root.scale = 0.90;
+        root.opacity = 0.0;
+        switchPopAnim.delayMs = delayMs || 0;
+        switchPopAnim.start();
+    }
+    function playPop(delayMs) { popIn(delayMs); }
+    function reset() {
+        switchPopAnim.stop();
+        switchTranslate.y = 0;
+        root.scale = 1.0;
+        root.opacity = 1.0;
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 10

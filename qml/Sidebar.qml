@@ -49,35 +49,80 @@ Rectangle {
         anchors.bottomMargin: 14
         spacing: 8
 
-        // Expand / collapse toggle (restored from before PR #24)
+        // Expand / collapse header button with dynamic states:
+        // - Collapsed: sidebar icon
+        // - Expanded: bread icon + "Loaf"
+        // - Expanded & hovered: sidebar icon + "Collapse"
         Item {
+            id: headerToggleItem
             Layout.fillWidth: true
             Layout.preferredHeight: 44
             height: 44
 
+            readonly property bool isHovered: toggleMouse.containsMouse
+
             Rectangle {
-                width: 44
+                x: 12
+                width: rail.expanded ? (parent.width - 24) : 44
                 height: 44
                 radius: 22
-                x: 12
-                color: toggleMouse.containsMouse ? theme.surfaceContainerHigh : "transparent"
+                color: headerToggleItem.isHovered ? theme.hoverOverlay : "transparent"
                 Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                Behavior on width { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+            }
 
-                LoafIcon {
-                    anchors.centerIn: parent
-                    name: rail.expanded ? "sidebar" : "sidebar-simple"
-                    size: 20
-                    color: theme.textMain
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: rail.expanded ? 16 : 12
+                spacing: 8
+
+                Item {
+                    width: 44
+                    height: 44
+
+                    LoafIcon {
+                        anchors.centerIn: parent
+                        name: !rail.expanded
+                            ? "sidebar-simple"
+                            : (headerToggleItem.isHovered ? "sidebar" : "bread")
+                        size: 20
+                        color: !rail.expanded ? theme.textMain : theme.primary
+                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                    }
                 }
 
-                MouseArea {
-                    id: toggleMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: rail.expanded = !rail.expanded
+                Text {
+                    visible: rail.expanded
+                    opacity: rail.expanded ? 1.0 : 0.0
+                    text: headerToggleItem.isHovered ? qsTr("Collapse") : "Loaf"
+                    color: headerToggleItem.isHovered ? theme.primary : theme.textMain
+                    font.pixelSize: theme.fs(14)
+                    font.bold: !headerToggleItem.isHovered
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 160 } }
+                    Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                 }
             }
+
+            MouseArea {
+                id: toggleMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: rail.expanded = !rail.expanded
+            }
+        }
+
+        // Divider between header and places
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 1
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            color: theme.separator
+            opacity: 0.45
         }
 
         ListView {
@@ -209,6 +254,8 @@ Rectangle {
 
         implicitHeight: 44
         height: 44
+        scale: mouse.pressed ? 0.95 : (mouse.containsMouse ? 1.02 : 1.0)
+        Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 4.0; damping: 0.3 } }
         Accessible.role: Accessible.Button
         Accessible.name: accessibleName
         Accessible.onPressAction: btn.clicked()
