@@ -138,6 +138,24 @@ In a local clone:
 nix run .#
 ```
 
+For a declarative installation, add to your `flake.nix`:
+
+```nix
+loaf.url = "github:m-uvex/loaf-fm";
+```
+And add to your `configuration.nix`:
+```nix
+{ inputs, pkgs, ...}:
+
+{
+    nixpkgs.overlays = [ loaf.overlays.default ];
+
+    environment.systemPackages = [ pkgs.loaf ];
+}
+```
+> [!NOTE]
+> We do not support `home-manager` currently
+
 ---
 
 ## Building from Source
