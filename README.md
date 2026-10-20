@@ -153,7 +153,8 @@ And add to your `configuration.nix`:
     environment.systemPackages = [ pkgs.loaf ];
 }
 ```
-> NOTE: We do not support `home-manager` currently
+> [!NOTE]
+> We do not support `home-manager` currently
 
 ---
 
