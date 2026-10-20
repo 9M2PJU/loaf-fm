@@ -471,8 +471,25 @@ ApplicationWindow {
     Shortcut { sequence: "Space"; enabled: quickLook.visible || window.gridKeyboardReady; onActivated: window.toggleQuickLook() }
     Shortcut { sequence: "Delete"; enabled: window.gridKeyboardReady; onActivated: window.trashSelection() }
     Shortcut { sequence: "Shift+Delete"; enabled: window.gridKeyboardReady; onActivated: window.deleteSelection() }
-    Shortcut { sequences: ["Alt+Left", StandardKey.Back]; enabled: engine.can_go_back; onActivated: engine.go_back() }
-    Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; enabled: engine.can_go_forward; onActivated: engine.go_forward() }
+    Shortcut {
+        sequences: ["Alt+Left", StandardKey.Back]
+        enabled: !window.anyModalOpen && (engine.can_go_back || window.isAuxView || engine.is_searching_everywhere)
+        onActivated: {
+            if (engine.is_searching_everywhere) {
+                engine.clear_search();
+                searchInput.text = "";
+            } else if (window.isAuxView) {
+                window.showFiles();
+            } else {
+                engine.go_back();
+            }
+        }
+    }
+    Shortcut {
+        sequences: ["Alt+Right", StandardKey.Forward]
+        enabled: !window.anyModalOpen && engine.can_go_forward && !window.isAuxView && !engine.is_searching_everywhere
+        onActivated: engine.go_forward()
+    }
     Shortcut { sequence: "Alt+Up"; onActivated: engine.navigate_up() }
     Shortcut { sequence: "Alt+Home"; onActivated: { window.showFiles(); engine.set_path(core.user_dir("HOME")); } }
     Shortcut { sequence: "Backspace"; enabled: window.gridKeyboardReady && engine.can_go_back; onActivated: engine.go_back() }
@@ -675,18 +692,18 @@ ApplicationWindow {
             spacing: 10
 
             Rectangle {
-                id: brandBadge
-                visible: (theme.showBrandBadge && window.width >= 820) || native.isAdmin
-                Layout.preferredWidth: brandRow.implicitWidth + 24
+                id: adminBadge
+                visible: native.isAdmin
+                Layout.preferredWidth: adminRow.implicitWidth + 24
                 Layout.preferredHeight: 42
                 radius: theme.radiusFull
-                color: native.isAdmin ? theme.dangerContainer : theme.surfaceContainer
+                color: theme.dangerContainer
                 RowLayout {
-                    id: brandRow
+                    id: adminRow
                     anchors.centerIn: parent
                     spacing: 8
-                    LoafIcon { name: native.isAdmin ? "shield-check" : "bread"; size: 18; color: native.isAdmin ? theme.danger : theme.primary }
-                    Text { text: native.isAdmin ? qsTr("Admin") : "Loaf"; color: native.isAdmin ? theme.danger : theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                    LoafIcon { name: "shield-check"; size: 18; color: theme.danger }
+                    Text { text: qsTr("Admin"); color: theme.danger; font.pixelSize: theme.fs(14); font.bold: true }
                 }
             }
 
@@ -794,6 +811,18 @@ ApplicationWindow {
                     onCountChanged: Qt.callLater(positionViewAtEnd)
                     interactive: contentWidth > width
                     boundsBehavior: Flickable.StopAtBounds
+
+                    add: Transition {
+                        enabled: theme.animate
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 180; easing.type: Easing.OutCubic }
+                            NumberAnimation { property: "scale"; from: 0.8; to: 1.0; duration: 200; easing.type: Easing.OutBack }
+                        }
+                    }
+                    displaced: Transition {
+                        enabled: theme.animate
+                        NumberAnimation { properties: "x,y"; duration: 220; easing.type: Easing.OutCubic }
+                    }
 
                     delegate: RowLayout {
                         id: crumbDelegate
@@ -1097,31 +1126,77 @@ ApplicationWindow {
                 }
             }
 
-            // View options.
+            // View options dropdown + quick view cycle button
             Rectangle {
+                id: viewDropdownButton
                 visible: window.activeView === "files"
                 Layout.preferredHeight: 42
-                Layout.preferredWidth: viewRow.implicitWidth + 24
+                Layout.preferredWidth: viewRow.implicitWidth + 20
                 radius: theme.radiusFull
-                color: viewMouse.containsMouse ? theme.surfaceContainerHighest : theme.surfaceContainer
-                Accessible.role: Accessible.Button
-                Accessible.name: qsTr("View options")
+                color: theme.surfaceContainer
+                clip: true
+
                 RowLayout {
                     id: viewRow
                     anchors.centerIn: parent
-                    spacing: 7
-                    LoafIcon { name: engine.view_mode === "list" ? "list" : "squares-four"; size: 16; color: theme.primary }
-                    Text { visible: window.width >= 900; text: qsTr("View"); color: theme.textMain; font.pixelSize: theme.fs(12); font.bold: true }
-                    LoafIcon { name: "caret-down"; size: 11; color: theme.outline }
-                }
-                MouseArea {
-                    id: viewMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        var pt = mapToItem(window.contentItem, 0, height + 6);
-                        viewMenuPopup.openAt(pt.x, pt.y);
+                    spacing: 4
+
+                    // Left icon button: cycles between views
+                    Rectangle {
+                        width: 32
+                        height: 32
+                        radius: 16
+                        color: cycleMouse.containsMouse ? theme.hoverOverlay : "transparent"
+                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                        LoafIcon {
+                            anchors.centerIn: parent
+                            name: engine.view_mode === "list" ? "list" : "squares-four"
+                            size: 16
+                            color: theme.primary
+                        }
+                        MouseArea {
+                            id: cycleMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: engine.set_view(engine.view_mode === "grid" ? "list" : "grid")
+                        }
+                    }
+
+                    // Right trigger: toggles dropdown
+                    Item {
+                        implicitWidth: dropRow.implicitWidth + 10
+                        implicitHeight: 32
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 16
+                            color: dropMouse.containsMouse ? theme.hoverOverlay : "transparent"
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                        }
+
+                        RowLayout {
+                            id: dropRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Text { visible: window.width >= 900; text: qsTr("View"); color: theme.textMain; font.pixelSize: theme.fs(12); font.bold: true }
+                            LoafIcon { name: viewMenuPopup.visible ? "caret-up" : "caret-down"; size: 11; color: theme.outline }
+                        }
+
+                        MouseArea {
+                            id: dropMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (viewMenuPopup.visible) {
+                                    viewMenuPopup.close();
+                                } else {
+                                    var pt = mapToItem(window.contentItem, viewDropdownButton.width - viewMenuPopup.width, viewDropdownButton.height + 6);
+                                    viewMenuPopup.openAt(pt.x, pt.y);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1132,86 +1207,6 @@ ApplicationWindow {
                 icon: "trash"
                 variant: "danger"
                 onClicked: window.confirmEmptyTrash()
-            }
-        }
-
-        // ---------------- tab strip ----------------
-        ListView {
-            id: tabStrip
-            visible: window.tabs.length > 1
-            Layout.fillWidth: true
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
-            Layout.preferredHeight: visible ? 34 : 0
-            orientation: ListView.Horizontal
-            spacing: 6
-            clip: true
-            model: window.tabs.length
-            Accessible.role: Accessible.PageTabList
-
-            delegate: Rectangle {
-                id: tabDelegate
-                required property int index
-                readonly property bool current: index === window.currentTab
-                readonly property string label: current ? engine.current_dir_name
-                    : (window.tabs[index] ? (window.tabs[index].title || qsTr("Tab")) : "")
-                width: Math.min(240, Math.max(120, tabLabel.implicitWidth + 84))
-                height: 34
-                radius: theme.radiusFull
-                color: current ? theme.secondaryContainer : (tabMouse.containsMouse ? theme.hoverOverlay : theme.surfaceContainer)
-                Accessible.role: Accessible.PageTab
-                Accessible.name: label
-
-                MouseArea {
-                    id: tabMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                    onClicked: function(m) {
-                        if (m.button === Qt.MiddleButton)
-                            window.closeTab(tabDelegate.index);
-                        else
-                            window.switchTab(tabDelegate.index);
-                    }
-                }
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 6
-                    spacing: 6
-                    LoafIcon {
-                        name: (tabDelegate.index === window.currentTab ? window.splitView
-                            : (window.tabs[tabDelegate.index] && window.tabs[tabDelegate.index].split)) ? "columns" : "folder"
-                        size: 14
-                        color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMuted
-                    }
-                    Text {
-                        id: tabLabel
-                        Layout.fillWidth: true
-                        text: tabDelegate.label
-                        color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMain
-                        font.pixelSize: theme.fs(12)
-                        font.bold: tabDelegate.current
-                        elide: Text.ElideRight
-                    }
-                    TopIconButton {
-                        iconName: "x"
-                        small: true
-                        accessibleName: qsTr("Close tab")
-                        onClicked: window.closeTab(tabDelegate.index)
-                    }
-                }
-            }
-            footer: Item {
-                width: 44
-                height: 34
-                TopIconButton {
-                    anchors.centerIn: parent
-                    iconName: "plus"
-                    accessibleName: qsTr("New tab")
-                    onClicked: window.newTab(engine.location_kind === "dir" ? engine.current_path : "")
-                }
             }
         }
 
@@ -1270,10 +1265,162 @@ ApplicationWindow {
                 onPlaceMenuRequested: function(place, x, y) { placeMenu.showFor(place, x, y); }
             }
 
-            Rectangle {
-                id: mainStage
+            ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                spacing: 8
+
+                // Tab strip sits to the right of the sidebar, moving only mainStage down!
+                ListView {
+                    id: tabStrip
+                    visible: window.tabs.length > 1
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: visible ? 36 : 0
+                    orientation: ListView.Horizontal
+                    spacing: 8
+                    clip: true
+                    model: window.tabs.length
+                    Accessible.role: Accessible.PageTabList
+
+                    add: Transition {
+                        enabled: theme.animate
+                        ParallelAnimation {
+                            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 200 }
+                            NumberAnimation { property: "scale"; from: 0.7; to: 1.0; duration: 220; easing.type: Easing.OutBack }
+                        }
+                    }
+                    displaced: Transition {
+                        enabled: theme.animate
+                        NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutCubic }
+                    }
+
+                    delegate: Rectangle {
+                        id: tabDelegate
+                        required property int index
+                        readonly property bool current: index === window.currentTab
+                        readonly property bool isSplit: current ? window.splitView
+                            : !!(window.tabs[index] && window.tabs[index].split)
+
+                        readonly property string leftName: current ? pane0.engine.current_dir_name
+                            : (window.tabs[index] ? (window.tabs[index].title || qsTr("Tab")) : "")
+                        readonly property string rightName: current ? (pane1Loader.item ? pane1Loader.item.engine.current_dir_name : (window.tabs[index] ? window.tabs[index].rightTitle || qsTr("Split") : qsTr("Split")))
+                            : (window.tabs[index] ? (window.tabs[index].rightTitle || qsTr("Split")) : qsTr("Split"))
+
+                        width: isSplit
+                            ? Math.min(380, Math.max(220, tabLeftLabel.implicitWidth + tabRightLabel.implicitWidth + 88))
+                            : Math.min(240, Math.max(120, tabLeftLabel.implicitWidth + 84))
+                        height: 34
+                        radius: theme.radiusFull
+                        color: current ? theme.secondaryContainer : (tabMouse.containsMouse ? theme.hoverOverlay : theme.surfaceContainer)
+                        Behavior on width { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 6
+                            spacing: 6
+
+                            LoafIcon {
+                                name: tabDelegate.isSplit ? "columns" : "folder"
+                                size: 14
+                                color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMuted
+                            }
+
+                            // Left Dir Label
+                            Item {
+                                Layout.fillWidth: true
+                                height: parent.height
+                                Text {
+                                    id: tabLeftLabel
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width
+                                    text: tabDelegate.leftName
+                                    color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMain
+                                    font.pixelSize: theme.fs(12)
+                                    font.bold: tabDelegate.current && (!tabDelegate.isSplit || window.activePane === pane0)
+                                    elide: Text.ElideRight
+                                }
+                                MouseArea {
+                                    id: tabMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                    onClicked: function(m) {
+                                        if (m.button === Qt.MiddleButton) {
+                                            window.closeTab(tabDelegate.index);
+                                        } else {
+                                            window.switchTab(tabDelegate.index);
+                                            window.setActivePane(pane0);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Divider for split tab
+                            Rectangle {
+                                visible: tabDelegate.isSplit
+                                width: 1
+                                height: 16
+                                color: tabDelegate.current ? theme.secondaryContainerFg : theme.outlineVariant
+                                opacity: 0.35
+                            }
+
+                            // Right Dir Label (only in split view)
+                            Item {
+                                visible: tabDelegate.isSplit
+                                Layout.fillWidth: true
+                                height: parent.height
+                                Text {
+                                    id: tabRightLabel
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width
+                                    text: tabDelegate.rightName
+                                    color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMain
+                                    font.pixelSize: theme.fs(12)
+                                    font.bold: tabDelegate.current && tabDelegate.isSplit && pane1Loader.item && window.activePane === pane1Loader.item
+                                    elide: Text.ElideRight
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                    onClicked: function(m) {
+                                        if (m.button === Qt.MiddleButton) {
+                                            window.closeTab(tabDelegate.index);
+                                        } else {
+                                            window.switchTab(tabDelegate.index);
+                                            if (pane1Loader.item) window.setActivePane(pane1Loader.item);
+                                        }
+                                    }
+                                }
+                            }
+
+                            TopIconButton {
+                                iconName: "x"
+                                small: true
+                                accessibleName: qsTr("Close tab")
+                                onClicked: window.closeTab(tabDelegate.index)
+                            }
+                        }
+                    }
+
+                    footer: Item {
+                        width: 40
+                        height: 34
+                        TopIconButton {
+                            anchors.centerIn: parent
+                            iconName: "plus"
+                            accessibleName: qsTr("New tab")
+                            onClicked: window.newTab(engine.location_kind === "dir" ? engine.current_path : "")
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: mainStage
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
                 radius: theme.radiusXl
                 color: theme.surfaceContainerLow
                 clip: true
@@ -1333,6 +1480,7 @@ ApplicationWindow {
                 }
             }
         }
+    }
     }
 
     OperationsPanel {
@@ -1615,9 +1763,9 @@ ApplicationWindow {
         }
 
         var inArchive = kind === "archive";
-        m.push({ text: qsTr("Open"), icon: "arrow-square-out", action: function() { pane.openSelected(); } });
+        m.push({ text: qsTr("Open"), icon: "arrow-square-out", itemKey: "open", action: function() { pane.openSelected(); } });
         if (item.is_dir && !inArchive)
-            m.push({ text: qsTr("Open in New Tab"), icon: "tabs", action: function() { for (var i = 0; i < paths.length; ++i) window.newTab(paths[i]); } });
+            m.push({ text: qsTr("Open in New Tab"), icon: "tabs", itemKey: "new_tab", action: function() { for (var i = 0; i < paths.length; ++i) window.newTab(paths[i]); } });
         if ((kind === "search" || kind === "recent" || kind === "starred") && item.parent_path)
             m.push({ text: qsTr("Open Containing Folder"), icon: "folder-open", action: function() {
                 var target = item.path;
@@ -1626,38 +1774,38 @@ ApplicationWindow {
                 pane.pendingSelect = [target];
             } });
         if (!item.is_dir && !inArchive) {
-            m.push({ text: qsTr("Open With"), icon: "app-window", submenu: openWithMenu(paths) });
+            m.push({ text: qsTr("Open With"), icon: "app-window", itemKey: "open_with", submenu: openWithMenu(paths) });
             if (core.is_archive_file(item.path)) {
                 m.push({ text: qsTr("Browse Archive"), icon: "folder-open", action: function() { pane.engine.set_path("archive://" + item.path + "#"); } });
-                m.push({ text: qsTr("Extract Here"), icon: "archive", action: function() { core.extract(item.path, false, ""); } });
-                m.push({ text: qsTr("Extract to Folder"), icon: "folder-plus", action: function() { core.extract(item.path, true, ""); } });
+                m.push({ text: qsTr("Extract Here"), icon: "archive", itemKey: "extract", action: function() { core.extract(item.path, false, ""); } });
+                m.push({ text: qsTr("Extract to Folder"), icon: "folder-plus", itemKey: "extract", action: function() { core.extract(item.path, true, ""); } });
             }
         }
-        m.push({ text: qsTr("Quick Look"), icon: "eye", shortcut: "Space", action: function() { quickLook.showFor(item.path); } });
+        m.push({ text: qsTr("Quick Look"), icon: "eye", shortcut: "Space", itemKey: "quick_look", action: function() { quickLook.showFor(item.path); } });
         if (!inArchive) {
             var termDir = item.is_dir ? item.path : (item.parent_path || pane.engine.current_path);
-            m.push({ text: qsTr("Open in Terminal"), icon: "terminal", action: function() { core.open_terminal(termDir); } });
+            m.push({ text: qsTr("Open in Terminal"), icon: "terminal", itemKey: "terminal", action: function() { core.open_terminal(termDir); } });
 
-            m.push({ text: qsTr("Cut"), icon: "scissors", shortcut: "Ctrl+X", separatorBefore: true, action: function() { window.copySelection(true); } });
-            m.push({ text: qsTr("Copy"), icon: "copy", shortcut: "Ctrl+C", action: function() { window.copySelection(false); } });
+            m.push({ text: qsTr("Cut"), icon: "scissors", shortcut: "Ctrl+X", itemKey: "cut", separatorBefore: true, action: function() { window.copySelection(true); } });
+            m.push({ text: qsTr("Copy"), icon: "copy", shortcut: "Ctrl+C", itemKey: "copy", action: function() { window.copySelection(false); } });
             if (item.is_dir && single && native.clipboardHasFiles())
-                m.push({ text: qsTr("Paste Into Folder"), icon: "clipboard", action: function() { window.pasteInto(item.path); } });
-            m.push({ text: qsTr("Copy Path"), icon: "copy-simple", shortcut: "Ctrl+Shift+C", action: function() { window.copyPathOfSelection(); } });
+                m.push({ text: qsTr("Paste Into Folder"), icon: "clipboard", itemKey: "paste", action: function() { window.pasteInto(item.path); } });
+            m.push({ text: qsTr("Copy Path"), icon: "copy-simple", shortcut: "Ctrl+Shift+C", itemKey: "copy_path", action: function() { window.copyPathOfSelection(); } });
             if (single)
-                m.push({ text: qsTr("Rename…"), icon: "pencil-simple", shortcut: "F2", action: function() { pane.startRename(); } });
+                m.push({ text: qsTr("Rename…"), icon: "pencil-simple", shortcut: "F2", itemKey: "rename", action: function() { pane.startRename(); } });
             else
-                m.push({ text: qsTr("Rename %1 Items…").arg(paths.length), icon: "pencil-simple", shortcut: "F2", action: function() { batchRename.showFor(pane.selectedItems()); } });
+                m.push({ text: qsTr("Rename %1 Items…").arg(paths.length), icon: "pencil-simple", shortcut: "F2", itemKey: "rename", action: function() { batchRename.showFor(pane.selectedItems()); } });
             if (kind === "dir") {
                 m.push({ text: qsTr("Duplicate"), icon: "copy-simple", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "copy", "rename"); } });
                 m.push({ text: qsTr("Make Link"), icon: "link", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "link", "rename"); } });
             }
-            m.push({ text: qsTr("Compress"), icon: "file-archive", submenu: compressSubmenu(paths) });
+            m.push({ text: qsTr("Compress"), icon: "file-archive", itemKey: "compress", submenu: compressSubmenu(paths) });
 
             var starred = item.starred === true;
-            m.push({ text: starred ? qsTr("Unstar") : qsTr("Star"), icon: "star", separatorBefore: true, action: function() { core.set_starred(JSON.stringify(paths), !starred); } });
+            m.push({ text: starred ? qsTr("Unstar") : qsTr("Star"), icon: "star", itemKey: "star", separatorBefore: true, action: function() { core.set_starred(JSON.stringify(paths), !starred); } });
             if (item.is_dir && single) {
                 var marked = core.is_bookmarked(item.path);
-                m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", action: function() {
+                m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", itemKey: "pin", action: function() {
                     if (marked)
                         core.remove_bookmark(item.path);
                     else
@@ -1672,11 +1820,23 @@ ApplicationWindow {
             if (!native.isAdmin && item.is_dir && single)
                 m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", action: function() { core.open_as_admin(item.path); } });
 
-            m.push({ text: qsTr("Move to Trash"), icon: "trash", shortcut: "Del", danger: true, separatorBefore: true, action: function() { window.trashSelection(); } });
-            m.push({ text: qsTr("Delete Permanently"), icon: "x-circle", shortcut: "Shift+Del", danger: true, action: function() { window.deleteSelection(); } });
+            m.push({ text: qsTr("Move to Trash"), icon: "trash", shortcut: "Del", danger: true, itemKey: "delete", separatorBefore: true, action: function() { window.trashSelection(); } });
+            m.push({ text: qsTr("Delete Permanently"), icon: "x-circle", shortcut: "Shift+Del", itemKey: "permanent_delete", danger: true, action: function() { window.deleteSelection(); } });
         }
-        m.push({ text: qsTr("Properties"), icon: "info", shortcut: "Alt+Enter", separatorBefore: true, enabled: !inArchive, action: function() { window.showProperties(paths); } });
-        contextMenu.model = m;
+        m.push({ text: qsTr("Properties"), icon: "info", shortcut: "Alt+Enter", itemKey: "properties", separatorBefore: true, enabled: !inArchive, action: function() { window.showProperties(paths); } });
+
+        function shouldIncludeItem(row) {
+            if (!row || !row.itemKey) return true;
+            if (theme.contextMenuMode === "minimal") {
+                if (["open", "cut", "copy", "paste", "delete", "permanent_delete", "select_all"].indexOf(row.itemKey) !== -1)
+                    return false;
+            } else if (theme.contextMenuMode === "custom") {
+                if (theme.disabledMenuItems && theme.disabledMenuItems[row.itemKey])
+                    return false;
+            }
+            return true;
+        }
+        contextMenu.model = m.filter(shouldIncludeItem);
         contextMenu.openAt(mx, my);
     }
 
@@ -1693,23 +1853,27 @@ ApplicationWindow {
             return;
         }
         if (kind === "dir") {
-            m.push({ text: qsTr("New Folder"), icon: "folder-plus", shortcut: "Ctrl+Shift+N", action: function() { inputModal.showNewFolder(); } });
-            m.push({ text: qsTr("New Empty File"), icon: "file-plus", action: function() { inputModal.showNewFile(); } });
+            var newSub = [
+                { text: qsTr("Folder"), icon: "folder-plus", shortcut: "Ctrl+Shift+N", action: function() { inputModal.showNewFolder(); } },
+                { text: qsTr("Empty File"), icon: "file-plus", action: function() { inputModal.showNewFile(); } }
+            ];
             var templates = JSON.parse(core.templates_json() || "[]");
-            if (templates.length > 0)
-                m.push({ text: qsTr("New Document"), icon: "file-doc", submenu: menuFromTree(templates, function(tpl) {
+            if (templates.length > 0) {
+                newSub.push({ text: qsTr("From Template"), icon: "file-doc", submenu: menuFromTree(templates, function(tpl) {
                     var created = core.create_from_template(tpl, e.current_path);
                     if (created.length > 0) {
                         pane.pendingSelect = [created];
                         pane.pendingRename = true;
                     }
                 }) });
-            m.push({ text: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V", enabled: native.clipboardHasFiles(), separatorBefore: true, action: function() { window.pasteInto(e.current_path); } });
+            }
+            m.push({ text: qsTr("New…"), icon: "plus-circle", submenu: newSub });
+            m.push({ text: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V", itemKey: "paste", enabled: native.clipboardHasFiles(), separatorBefore: true, action: function() { window.pasteInto(e.current_path); } });
         }
-        m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", separatorBefore: kind !== "dir", action: function() { pane.selectAll(); } });
+        m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", itemKey: "select_all", separatorBefore: kind !== "dir", action: function() { pane.selectAll(); } });
         m.push({ text: qsTr("Select by Pattern…"), icon: "selection", shortcut: "Ctrl+S", action: function() { patternModal.openFor(); } });
         if (kind === "dir") {
-            m.push({ text: qsTr("Open Terminal Here"), icon: "terminal", separatorBefore: true, action: function() { core.open_terminal(e.current_path); } });
+            m.push({ text: qsTr("Open Terminal Here"), icon: "terminal", itemKey: "terminal", separatorBefore: true, action: function() { core.open_terminal(e.current_path); } });
             var marked = core.is_bookmarked(e.current_path);
             m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", shortcut: "Ctrl+D", action: function() {
                 if (marked)
@@ -1722,9 +1886,21 @@ ApplicationWindow {
                 m.push({ text: qsTr("Scripts"), icon: "scroll", submenu: menuFromTree(scripts, function(script) { core.run_script(script, e.current_path, "[]"); }) });
             if (!native.isAdmin)
                 m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", action: function() { core.open_as_admin(e.current_path); } });
-            m.push({ text: qsTr("Properties"), icon: "info", separatorBefore: true, action: function() { window.showProperties([e.current_path]); } });
+            m.push({ text: qsTr("Properties"), icon: "info", itemKey: "properties", separatorBefore: true, action: function() { window.showProperties([e.current_path]); } });
         }
-        contextMenu.model = m;
+
+        function shouldIncludeEmpty(row) {
+            if (!row || !row.itemKey) return true;
+            if (theme.contextMenuMode === "minimal") {
+                if (["open", "cut", "copy", "paste", "delete", "permanent_delete", "select_all"].indexOf(row.itemKey) !== -1)
+                    return false;
+            } else if (theme.contextMenuMode === "custom") {
+                if (theme.disabledMenuItems && theme.disabledMenuItems[row.itemKey])
+                    return false;
+            }
+            return true;
+        }
+        contextMenu.model = m.filter(shouldIncludeEmpty);
         contextMenu.openAt(mx, my);
     }
 
@@ -1800,45 +1976,48 @@ ApplicationWindow {
     // View dropdown.
     LoafMenu {
         id: viewMenuPopup
-        menuMinWidth: 300
-        menuMaxWidth: 360
+        menuMinWidth: 290
+        menuMaxWidth: 340
         model: []
 
-        Text { Layout.leftMargin: 6; text: qsTr("VIEW"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
+        Text { Layout.leftMargin: 8; Layout.topMargin: 4; text: qsTr("VIEW MODE"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
         LoafSegmented {
-            Layout.leftMargin: 2
+            Layout.fillWidth: true
+            Layout.leftMargin: 4; Layout.rightMargin: 4
             options: [{ value: "grid", label: qsTr("Grid"), icon: "squares-four" }, { value: "list", label: qsTr("List"), icon: "list" }]
             value: engine.view_mode
             onSelected: function(v) { engine.set_view(v); }
         }
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 6
+            Layout.leftMargin: 8; Layout.rightMargin: 8
             Text { text: qsTr("Icon size"); color: theme.textMain; font.pixelSize: theme.fs(12); Layout.fillWidth: true }
             LoafButton { icon: "magnifying-glass-minus"; variant: "tonal"; enabled: theme.zoomIndex > 0; onClicked: theme.stepZoom(-1) }
             Text { text: Math.round(theme.zoom * 100) + "%"; color: theme.textMuted; font.pixelSize: theme.fs(11) }
             LoafButton { icon: "magnifying-glass-plus"; variant: "tonal"; enabled: theme.zoomIndex < theme.zoomLevels.length - 1; onClicked: theme.stepZoom(1) }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.margins: 4; color: theme.separator }
-        Text { Layout.leftMargin: 6; text: qsTr("SORT BY"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.topMargin: 4; Layout.bottomMargin: 4; color: theme.separator }
+        Text { Layout.leftMargin: 8; text: qsTr("SORT BY"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
         LoafMenuItem { text: qsTr("Name"); checkable: true; checked: engine.sort_by === "name"; onTriggered: engine.set_sort("name", engine.sort_ascending) }
         LoafMenuItem { text: qsTr("Date Modified"); checkable: true; checked: engine.sort_by === "modified"; onTriggered: engine.set_sort("modified", engine.sort_ascending) }
         LoafMenuItem { text: qsTr("Size"); checkable: true; checked: engine.sort_by === "size"; onTriggered: engine.set_sort("size", engine.sort_ascending) }
         LoafMenuItem { text: qsTr("Type"); checkable: true; checked: engine.sort_by === "type"; onTriggered: engine.set_sort("type", engine.sort_ascending) }
         LoafSegmented {
-            Layout.leftMargin: 2
+            Layout.fillWidth: true
+            Layout.leftMargin: 4; Layout.rightMargin: 4
             options: [{ value: "asc", label: qsTr("Ascending"), icon: "sort-ascending" }, { value: "desc", label: qsTr("Descending"), icon: "sort-descending" }]
             value: engine.sort_ascending ? "asc" : "desc"
             onSelected: function(v) { engine.set_sort(engine.sort_by, v === "asc"); }
         }
-        Text { Layout.leftMargin: 6; text: qsTr("FOLDERS"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
+        Text { Layout.leftMargin: 8; Layout.topMargin: 4; text: qsTr("FOLDERS"); color: theme.textMuted; font.pixelSize: theme.fs(10); font.bold: true; font.letterSpacing: 0.8 }
         LoafSegmented {
-            Layout.leftMargin: 2
+            Layout.fillWidth: true
+            Layout.leftMargin: 4; Layout.rightMargin: 4
             options: [{ value: "first", label: qsTr("First") }, { value: "last", label: qsTr("Last") }, { value: "mixed", label: qsTr("Mixed") }]
             value: engine.folder_position
             onSelected: function(v) { engine.change_folder_position(v); }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.margins: 4; color: theme.separator }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.topMargin: 4; Layout.bottomMargin: 4; color: theme.separator }
         LoafSwitch { label: qsTr("Show Hidden Files"); checked: engine.show_hidden; onToggled: engine.toggle_show_hidden() }
         LoafSwitch { label: qsTr("Split View (F3)"); checked: window.splitView; onToggled: window.toggleSplit() }
         LoafSwitch { label: qsTr("Search File Contents"); checked: theme.searchContents; onToggled: function(c) { theme.searchContents = c; } }
@@ -2101,7 +2280,7 @@ ApplicationWindow {
     LoafDialog {
         id: customizePlaces
         title: qsTr("Customize Sidebar")
-        dialogWidth: 420
+        dialogWidth: 440
         property var all: []
         onOpened: all = JSON.parse(core.all_places_json() || "[]")
         Connections {
@@ -2112,33 +2291,212 @@ ApplicationWindow {
             }
         }
         ListView {
+            id: customizePlacesList
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(380, contentHeight)
             clip: true
             model: customizePlaces.all
             ScrollBar.vertical: ScrollBar {}
-            delegate: RowLayout {
+            spacing: 4
+
+            delegate: Rectangle {
                 id: placeRow
                 required property var modelData
                 required property int index
                 width: ListView.view.width
-                spacing: 8
-                LoafCheckBox {
-                    checked: !placeRow.modelData.hidden
-                    onToggled: core.set_place_hidden(placeRow.modelData.id, !checked)
-                    Accessible.name: placeRow.modelData.name
+                height: 40
+                radius: theme.radiusM
+                color: dragHandleArea.containsMouse ? theme.hoverOverlay : "transparent"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    spacing: 10
+
+                    // Drag Indicator
+                    Item {
+                        width: 20; height: 32
+                        LoafIcon {
+                            anchors.centerIn: parent
+                            name: "dots-six-vertical"
+                            size: 16
+                            color: dragHandleArea.containsMouse ? theme.primary : theme.outline
+                        }
+                        MouseArea {
+                            id: dragHandleArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeVerCursor
+                            property int startY: 0
+                            property int startIdx: -1
+                            onPressed: function(mouse) {
+                                startY = mouse.y;
+                                startIdx = placeRow.index;
+                            }
+                            onPositionChanged: function(mouse) {
+                                if (pressed) {
+                                    var delta = Math.round((mouse.y - startY) / 40);
+                                    var targetIdx = startIdx + delta;
+                                    if (targetIdx >= 0 && targetIdx < customizePlaces.all.length && targetIdx !== placeRow.index) {
+                                        core.move_place(placeRow.modelData.id, targetIdx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LoafIcon {
+                        name: placeRow.modelData.icon || "folder"
+                        size: 16
+                        color: placeRow.modelData.hidden ? theme.outline : theme.primary
+                    }
+
+                    Text {
+                        text: placeRow.modelData.name || ""
+                        color: placeRow.modelData.hidden ? theme.textMuted : theme.textMain
+                        font.pixelSize: theme.fs(13)
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        opacity: placeRow.modelData.hidden ? 0.55 : 1.0
+                    }
+
+                    // Show / Hide (Eye icon)
+                    LoafButton {
+                        icon: placeRow.modelData.hidden ? "eye-slash" : "eye"
+                        variant: "text"
+                        accessibleName: placeRow.modelData.hidden ? qsTr("Show in sidebar") : qsTr("Hide from sidebar")
+                        onClicked: core.set_place_hidden(placeRow.modelData.id, !placeRow.modelData.hidden)
+                    }
+
+                    // Delete (Trash icon)
+                    LoafButton {
+                        icon: "trash"
+                        variant: "text"
+                        enabled: placeRow.modelData.kind === "bookmark" || (placeRow.modelData.id && placeRow.modelData.id.indexOf("bookmark:") === 0)
+                        accessibleName: qsTr("Remove bookmark")
+                        onClicked: {
+                            if (placeRow.modelData.path)
+                                core.remove_bookmark(placeRow.modelData.path);
+                            else
+                                core.set_place_hidden(placeRow.modelData.id, true);
+                        }
+                    }
                 }
-                LoafIcon { name: placeRow.modelData.icon; size: 16; color: theme.primary }
-                Text { text: placeRow.modelData.name; color: theme.textMain; font.pixelSize: theme.fs(13); Layout.fillWidth: true; elide: Text.ElideRight }
-                LoafButton { icon: "caret-up"; variant: "text"; enabled: placeRow.index > 0; onClicked: core.move_place(placeRow.modelData.id, placeRow.index - 1) }
-                LoafButton { icon: "caret-down"; variant: "text"; enabled: placeRow.index < customizePlaces.all.length - 1; onClicked: core.move_place(placeRow.modelData.id, placeRow.index + 1) }
             }
         }
         RowLayout {
             Layout.fillWidth: true
-            LoafButton { text: qsTr("Reset"); variant: "text"; onClicked: core.reset_places() }
+            spacing: 8
+            LoafButton {
+                text: qsTr("Add Place…")
+                icon: "plus"
+                variant: "tonal"
+                onClicked: addPlacePrompt.open()
+            }
+            LoafButton {
+                text: qsTr("Reset")
+                variant: "text"
+                onClicked: core.reset_places()
+            }
             Item { Layout.fillWidth: true }
-            LoafButton { text: qsTr("Done"); variant: "filled"; onClicked: customizePlaces.close() }
+            LoafButton {
+                text: qsTr("Done")
+                variant: "filled"
+                onClicked: customizePlaces.close()
+            }
+        }
+    }
+
+    LoafTextPrompt {
+        id: addPlacePrompt
+        title: qsTr("Add Place to Sidebar")
+        label: qsTr("Enter the full path of the folder to add:")
+        placeholder: "/home/user/my-folder"
+        confirmText: qsTr("Add")
+        selectBasename: false
+        onAccepted: function(pathText) {
+            var p = (pathText || "").trim();
+            if (p.length > 0) {
+                core.add_bookmark(p);
+            }
+        }
+    }
+
+    // Customize Context Menu Dialog
+    LoafDialog {
+        id: customizeContextMenuDialog
+        title: qsTr("Customize Context Menu Actions")
+        dialogWidth: 440
+
+        readonly property var allActions: [
+            { id: "open", name: qsTr("Open"), icon: "arrow-square-out", shortcut: "Enter" },
+            { id: "new_tab", name: qsTr("Open in New Tab"), icon: "tabs", shortcut: "" },
+            { id: "open_with", name: qsTr("Open With"), icon: "app-window", shortcut: "" },
+            { id: "quick_look", name: qsTr("Quick Look"), icon: "eye", shortcut: "Space" },
+            { id: "terminal", name: qsTr("Open in Terminal"), icon: "terminal", shortcut: "" },
+            { id: "cut", name: qsTr("Cut"), icon: "scissors", shortcut: "Ctrl+X" },
+            { id: "copy", name: qsTr("Copy"), icon: "copy", shortcut: "Ctrl+C" },
+            { id: "copy_path", name: qsTr("Copy Path"), icon: "copy-simple", shortcut: "Ctrl+Shift+C" },
+            { id: "paste", name: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V" },
+            { id: "rename", name: qsTr("Rename"), icon: "pencil-simple", shortcut: "F2" },
+            { id: "compress", name: qsTr("Compress"), icon: "file-archive", shortcut: "" },
+            { id: "extract", name: qsTr("Extract"), icon: "archive", shortcut: "" },
+            { id: "star", name: qsTr("Star / Unstar"), icon: "star", shortcut: "" },
+            { id: "pin", name: qsTr("Add / Remove from Sidebar"), icon: "push-pin", shortcut: "" },
+            { id: "delete", name: qsTr("Move to Trash"), icon: "trash", shortcut: "Del" },
+            { id: "permanent_delete", name: qsTr("Delete Permanently"), icon: "x-circle", shortcut: "Shift+Del" },
+            { id: "properties", name: qsTr("Properties"), icon: "info", shortcut: "Alt+Enter" }
+        ]
+
+        ListView {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(380, contentHeight)
+            clip: true
+            model: customizeContextMenuDialog.allActions
+            ScrollBar.vertical: ScrollBar {}
+            spacing: 6
+
+            delegate: RowLayout {
+                required property var modelData
+                width: ListView.view.width
+                spacing: 10
+
+                LoafIcon { name: modelData.icon; size: 16; color: theme.primary }
+                Text { text: modelData.name; color: theme.textMain; font.pixelSize: theme.fs(13); Layout.fillWidth: true }
+                Text { visible: modelData.shortcut.length > 0; text: modelData.shortcut; color: theme.textMuted; font.pixelSize: theme.fs(11) }
+
+                LoafSwitch {
+                    checked: !theme.disabledMenuItems || !theme.disabledMenuItems[modelData.id]
+                    onToggled: function(c) {
+                        var map = Object.assign({}, theme.disabledMenuItems || {});
+                        if (c) {
+                            delete map[modelData.id];
+                        } else {
+                            map[modelData.id] = true;
+                        }
+                        theme.disabledMenuItems = map;
+                    }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            LoafButton {
+                text: qsTr("Reset to Full")
+                variant: "text"
+                onClicked: {
+                    theme.disabledMenuItems = {};
+                    theme.contextMenuMode = "full";
+                }
+            }
+            Item { Layout.fillWidth: true }
+            LoafButton {
+                text: qsTr("Done")
+                variant: "filled"
+                onClicked: customizeContextMenuDialog.close()
+            }
         }
     }
 }

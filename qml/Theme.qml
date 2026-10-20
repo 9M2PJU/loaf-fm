@@ -14,6 +14,8 @@ Item {
     property bool showExperimentalIcons: false
     property bool showAdvancedArchives: false
     property bool experimentalPcCustomization: false
+    property string contextMenuMode: "full" // "full", "minimal", "custom"
+    property var disabledMenuItems: ({})
 
     // ---- performance / accessibility ---------------------------------------
     // "auto" turns low-power mode on when Qt renders without a GPU.
@@ -95,8 +97,8 @@ Item {
     readonly property var palettes: ({
         "wallpaper": {
             darkBg: (wallpaperData && wallpaperData.background) ? wallpaperData.background : "#121214",
-            darkSurfaceLowest: (wallpaperData && wallpaperData.surface_container_lowest) ? wallpaperData.surface_container_lowest : "#0d0e0f",
-            darkSurfaceLow: (wallpaperData && wallpaperData.surface_container_low) ? wallpaperData.surface_container_low : "#18191a",
+            darkSurfaceLowest: (wallpaperData && wallpaperData.surface_container_lowest) ? wallpaperData.surface_container_lowest : ((wallpaperData && wallpaperData.background) ? wallpaperData.background : "#0d0e0f"),
+            darkSurfaceLow: (wallpaperData && wallpaperData.surface_container_low) ? wallpaperData.surface_container_low : ((wallpaperData && wallpaperData.surface_container) ? wallpaperData.surface_container : "#18191a"),
             darkSurface: (wallpaperData && wallpaperData.surface_container) ? wallpaperData.surface_container : "#1e2021",
             darkSurfaceHigh: (wallpaperData && wallpaperData.surface_container_high) ? wallpaperData.surface_container_high : "#282a2b",
             darkSurfaceHighest: (wallpaperData && wallpaperData.surface_container_highest) ? wallpaperData.surface_container_highest : "#333537",
@@ -112,23 +114,23 @@ Item {
             darkOutline: (wallpaperData && wallpaperData.outline) ? wallpaperData.outline : "#92908a",
             darkOutlineVariant: (wallpaperData && wallpaperData.outline_variant) ? wallpaperData.outline_variant : "#484742",
 
-            lightBg: "#fef8f4",
-            lightSurfaceLowest: "#ffffff",
-            lightSurfaceLow: "#f9f2ec",
-            lightSurface: "#f3ece4",
-            lightSurfaceHigh: "#ede5dc",
-            lightSurfaceHighest: "#e7ded4",
+            lightBg: (wallpaperData && wallpaperData.background) ? wallpaperData.background : "#fef8f4",
+            lightSurfaceLowest: (wallpaperData && wallpaperData.surface_container_lowest) ? wallpaperData.surface_container_lowest : "#ffffff",
+            lightSurfaceLow: (wallpaperData && wallpaperData.surface_container_low) ? wallpaperData.surface_container_low : "#f9f2ec",
+            lightSurface: (wallpaperData && wallpaperData.surface_container) ? wallpaperData.surface_container : "#f3ece4",
+            lightSurfaceHigh: (wallpaperData && wallpaperData.surface_container_high) ? wallpaperData.surface_container_high : "#ede5dc",
+            lightSurfaceHighest: (wallpaperData && wallpaperData.surface_container_highest) ? wallpaperData.surface_container_highest : "#e7ded4",
             lightPrimary: (wallpaperData && wallpaperData.primary) ? wallpaperData.primary : "#655e48",
-            lightFg: "#ffffff",
+            lightFg: (wallpaperData && wallpaperData.on_primary) ? wallpaperData.on_primary : "#ffffff",
             lightContainer: (wallpaperData && wallpaperData.primary_container) ? wallpaperData.primary_container : "#ece2c6",
             lightContainerFg: (wallpaperData && wallpaperData.on_primary_container) ? wallpaperData.on_primary_container : "#201b0a",
             lightSecondaryContainer: (wallpaperData && wallpaperData.secondary_container) ? wallpaperData.secondary_container : "#ece2c6",
             lightSecondaryContainerFg: (wallpaperData && wallpaperData.on_secondary_container) ? wallpaperData.on_secondary_container : "#201b0a",
             lightTertiaryContainer: (wallpaperData && wallpaperData.tertiary_container) ? wallpaperData.tertiary_container : "#f0ddd0",
-            lightTextMain: "#1d1c16",
-            lightTextMuted: "#494740",
-            lightOutline: "#7a7770",
-            lightOutlineVariant: "#cbc7be"
+            lightTextMain: (wallpaperData && wallpaperData.on_surface) ? wallpaperData.on_surface : "#1d1c16",
+            lightTextMuted: (wallpaperData && wallpaperData.on_surface_variant) ? wallpaperData.on_surface_variant : "#494740",
+            lightOutline: (wallpaperData && wallpaperData.outline) ? wallpaperData.outline : "#7a7770",
+            lightOutlineVariant: (wallpaperData && wallpaperData.outline_variant) ? wallpaperData.outline_variant : "#cbc7be"
         },
         "lavender": {
             darkBg: "#121214",
@@ -2019,6 +2021,12 @@ Item {
         if (value.length > 0) clickToRename = (value === "true");
         value = readSetting("searchContents");
         if (value.length > 0) searchContents = (value === "true");
+        value = readSetting("contextMenuMode");
+        if (value.length > 0) contextMenuMode = value;
+        value = readSetting("disabledMenuItems");
+        if (value.length > 0) {
+            try { disabledMenuItems = JSON.parse(value); } catch (e) { disabledMenuItems = {}; }
+        }
         loaded = true;
     }
 
@@ -2047,4 +2055,6 @@ Item {
     onFontScaleSettingChanged: writeSetting("fontScale", fontScaleSetting)
     onClickToRenameChanged: writeSetting("clickToRename", clickToRename)
     onSearchContentsChanged: writeSetting("searchContents", searchContents)
+    onContextMenuModeChanged: writeSetting("contextMenuMode", contextMenuMode)
+    onDisabledMenuItemsChanged: writeSetting("disabledMenuItems", JSON.stringify(disabledMenuItems))
 }

@@ -44,7 +44,6 @@ LoafPopup {
         menu.highlightIndex = -1;
         rowsView.positionViewAtBeginning();
         keyHandler.forceActiveFocus();
-        menu.animateIn();
     }
 
     onAboutToHide: menu.animateOut()

@@ -74,7 +74,7 @@ Item {
         // Left Navigation Tabs
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 180
+            Layout.preferredWidth: 200
             radius: theme.radiusL
             color: theme.surfaceContainer
 
@@ -159,6 +159,7 @@ Item {
                                         color: isCurrent ? theme.primaryContainerFg : (isHovered ? theme.textMain : theme.textMuted)
                                         font.pixelSize: theme.fs(13)
                                         font.bold: isCurrent
+                                        elide: Text.ElideRight
                                         Layout.fillWidth: true
                                         Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                     }
@@ -935,6 +936,46 @@ Item {
                             LoafSwitch {
                                 checked: theme.searchContents
                                 onToggled: function(c) { theme.searchContents = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Navigation sidebar")
+                            subtitle: qsTr("Show, hide and reorder places, drives and bookmarks in the left rail")
+                            LoafButton {
+                                text: qsTr("Customize Sidebar…")
+                                icon: "sliders-horizontal"
+                                variant: "tonal"
+                                onClicked: customizePlaces.open()
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Context menu layout")
+                            subtitle: qsTr("Minimal hides items with common shortcuts (Open, Cut, Copy, Delete, etc.)")
+                            RowLayout {
+                                spacing: 8
+                                LoafSegmented {
+                                    Layout.preferredWidth: 260
+                                    options: [
+                                        { value: "full", label: qsTr("Full") },
+                                        { value: "minimal", label: qsTr("Minimal") },
+                                        { value: "custom", label: qsTr("Custom") }
+                                    ]
+                                    value: theme.contextMenuMode
+                                    onSelected: function(v) {
+                                        theme.contextMenuMode = v;
+                                        if (v === "custom")
+                                            customizeContextMenuDialog.open();
+                                    }
+                                }
+                                LoafButton {
+                                    visible: theme.contextMenuMode === "custom"
+                                    text: qsTr("Edit…")
+                                    icon: "sliders"
+                                    variant: "tonal"
+                                    onClicked: customizeContextMenuDialog.open()
+                                }
                             }
                         }
                     }

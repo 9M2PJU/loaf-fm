@@ -15,6 +15,26 @@ LoafPopup {
     // (which opened Quick Look) needs its own shortcut to close it again.
     Shortcut { sequence: "Space"; enabled: quickLook.visible; onActivated: quickLook.close() }
 
+    transformOrigin: Item.Center
+    scale: 0.72
+    opacity: 0.0
+
+    enter: Transition {
+        enabled: theme.animate
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "scale"; from: 0.72; to: 1.0; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.15 }
+        }
+    }
+
+    exit: Transition {
+        enabled: theme.animate
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 160; easing.type: Easing.InCubic }
+            NumberAnimation { property: "scale"; from: 1.0; to: 0.78; duration: 160; easing.type: Easing.InCubic }
+        }
+    }
+
     property var info: ({})
     property bool imageFailed: false
     // Rendered once per open so scrolling never re-runs the highlighter.

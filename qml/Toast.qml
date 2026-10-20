@@ -14,11 +14,28 @@ Rectangle {
         kind = k;
         message = text;
         visible = true;
+        opacity = 1.0;
+        scale = 1.0;
         hideTimer.interval = k === "error" ? 8000 : 5000;
         hideTimer.restart();
     }
 
+    function dismiss() {
+        opacity = 0.0;
+        scale = 0.85;
+        closeTimer.restart();
+    }
+
     visible: false
+    opacity: 0.0
+    scale: 0.85
+    transformOrigin: Item.Center
+
+    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+    Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
+
+    Timer { id: closeTimer; interval: 180; onTriggered: toast.visible = false }
+
     width: Math.min(row.implicitWidth + 32, parent ? parent.width - 40 : 600)
     height: 46
     radius: theme.radiusFull
@@ -28,7 +45,7 @@ Rectangle {
     Accessible.role: Accessible.AlertMessage
     Accessible.name: message
 
-    Timer { id: hideTimer; onTriggered: toast.visible = false }
+    Timer { id: hideTimer; onTriggered: toast.dismiss() }
 
     HoverHandler { onHoveredChanged: if (hovered) hideTimer.stop(); else hideTimer.restart() }
 
@@ -54,14 +71,14 @@ Rectangle {
             variant: "tonal"
             onClicked: {
                 core.undo();
-                toast.visible = false;
+                toast.dismiss();
             }
         }
         LoafButton {
             icon: "x"
             variant: "text"
             Accessible.name: qsTr("Dismiss")
-            onClicked: toast.visible = false
+            onClicked: toast.dismiss()
         }
     }
 }

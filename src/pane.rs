@@ -438,41 +438,47 @@ fn crumb(name: &str, path: &str, icon: &str, sys: &str, root: bool) -> Crumb {
     }
 }
 
-/// Breadcrumbs for a real folder: start at the deepest known place (an XDG
-/// folder with its localized name, Home, or the filesystem root).
+/// Breadcrumbs for a real folder: start at Home for anything inside ~$USER,
+/// or at the filesystem root for system paths.
 fn dir_crumbs(target: &Path) -> Vec<Crumb> {
     let home = util::home();
-    let places = xdg::default_places();
-    let base = places
-        .iter()
-        .filter(|p| p.id != "home")
-        .find(|p| target.starts_with(&p.path))
-        .map(|p| (PathBuf::from(&p.path), p.name.clone(), p.icon.clone(), format!("{}-symbolic", p.system_icon)))
-        .or_else(|| {
-            if target.starts_with(&home) {
-                Some((home.clone(), "Home".into(), "house".into(), "user-home-symbolic".into()))
-            } else {
-                None
-            }
-        });
     let mut out = Vec::new();
-    let (mut cur, rel) = match base {
-        Some((root, name, icon, sys)) => {
-            out.push(crumb(&name, &root.to_string_lossy(), &icon, &sys, true));
-            let rel = target.strip_prefix(&root).map(|r| r.to_path_buf()).unwrap_or_default();
-            (root, rel)
+
+    if target.starts_with(&home) {
+        out.push(crumb("Home", &home.to_string_lossy(), "house", "user-home-symbolic", true));
+        let mut cur = home.clone();
+        if let Ok(rel) = target.strip_prefix(&home) {
+            for comp in rel.components() {
+                if let std::path::Component::Normal(c) = comp {
+                    cur.push(c);
+                    let name = c.to_string_lossy().to_string();
+                    // Match XDG places for nicer icons (Pictures, Downloads, Documents, etc.)
+                    let (icon, sys) = match name.as_str() {
+                        "Documents" => ("file-text", "folder-documents-symbolic"),
+                        "Downloads" => ("download", "folder-download-symbolic"),
+                        "Pictures" => ("image", "folder-pictures-symbolic"),
+                        "Music" => ("music", "folder-music-symbolic"),
+                        "Videos" => ("video", "folder-videos-symbolic"),
+                        "Desktop" => ("desktop", "user-desktop-symbolic"),
+                        _ => ("folder", "folder"),
+                    };
+                    out.push(crumb(&name, &cur.to_string_lossy(), icon, sys, false));
+                }
+            }
         }
-        None => {
-            out.push(crumb("root", "/", "hard-drive", "drive-harddisk-symbolic", true));
-            (PathBuf::from("/"), target.strip_prefix("/").map(|r| r.to_path_buf()).unwrap_or_default())
-        }
-    };
-    for comp in rel.components() {
-        if let std::path::Component::Normal(c) = comp {
-            cur.push(c);
-            out.push(crumb(&c.to_string_lossy(), &cur.to_string_lossy(), "folder", "folder", false));
+    } else {
+        out.push(crumb("root", "/", "hard-drive", "drive-harddisk-symbolic", true));
+        let mut cur = PathBuf::from("/");
+        if let Ok(rel) = target.strip_prefix("/") {
+            for comp in rel.components() {
+                if let std::path::Component::Normal(c) = comp {
+                    cur.push(c);
+                    out.push(crumb(&c.to_string_lossy(), &cur.to_string_lossy(), "folder", "folder", false));
+                }
+            }
         }
     }
+
     out
 }
 

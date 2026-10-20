@@ -484,6 +484,18 @@ Item {
                 Accessible.role: Accessible.List
                 Accessible.name: paneEngine.current_dir_name
 
+                add: Transition {
+                    enabled: theme.animate
+                    ParallelAnimation {
+                        NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 200 }
+                        NumberAnimation { property: "scale"; from: 0.75; to: 1.0; duration: 240; easing.type: Easing.OutBack }
+                    }
+                }
+                displaced: Transition {
+                    enabled: theme.animate
+                    NumberAnimation { properties: "x,y"; duration: 240; easing.type: Easing.OutCubic }
+                }
+
                 ScrollBar.vertical: ScrollBar {
                     id: gridScroll
                     policy: ScrollBar.AsNeeded
@@ -756,8 +768,8 @@ Item {
                                     source: theme.showThumbnails && card.thumbable && card.thumb_id.length > 0
                                         ? ("image://thumb/" + card.thumb_id) : ""
                                     fillMode: Image.PreserveAspectCrop
-                                    sourceSize.width: Math.round(96 * pane.zoom)
-                                    sourceSize.height: Math.round(96 * pane.zoom)
+                                    sourceSize.width: Math.round(48 * pane.zoom)
+                                    sourceSize.height: Math.round(48 * pane.zoom)
                                     asynchronous: true
                                     cache: true
                                     smooth: true
@@ -984,6 +996,15 @@ Item {
                 Accessible.role: Accessible.List
                 Accessible.name: paneEngine.current_dir_name
 
+                add: Transition {
+                    enabled: theme.animate
+                    NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 180; easing.type: Easing.OutCubic }
+                }
+                displaced: Transition {
+                    enabled: theme.animate
+                    NumberAnimation { property: "y"; duration: 200; easing.type: Easing.OutCubic }
+                }
+
                 ScrollBar.vertical: ScrollBar {
                     id: listScroll
                     policy: ScrollBar.AsNeeded
@@ -1107,7 +1128,7 @@ Item {
                                         anchors.fill: parent
                                         source: theme.showThumbnails && row.thumbable && row.thumb_id.length > 0 ? ("image://thumb/" + row.thumb_id) : ""
                                         fillMode: Image.PreserveAspectCrop
-                                        sourceSize.width: 44; sourceSize.height: 44
+                                        sourceSize.width: 24; sourceSize.height: 24
                                         asynchronous: true
                                     }
                                 }
