@@ -39,6 +39,10 @@ LoafPopup {
         menu.autoWidth = menu.computeWidth();
     }
 
+    property real lastClosedTime: 0
+
+    onAboutToShow: menu.animateIn()
+
     onOpened: {
         menu.reposition();
         menu.highlightIndex = -1;
@@ -49,6 +53,7 @@ LoafPopup {
     onAboutToHide: menu.animateOut()
 
     onClosed: {
+        menu.lastClosedTime = Date.now();
         menu.hideSubmenuNow();
         menu.resetRows();
     }

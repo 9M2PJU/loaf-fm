@@ -220,31 +220,42 @@ ApplicationWindow {
 
     function saveCurrentTab() {
         var t = tabs[currentTab];
+        if (!t) return;
+        t.view = window.activeView;
         t.states = [pane0.engine.get_state(), splitView && pane1Loader.item ? pane1Loader.item.engine.get_state() : (t.states[1] || "")];
         t.split = splitView;
         t.active = activePane === pane0 ? 0 : 1;
-        t.title = engine.current_dir_name;
+        if (window.activeView === "settings")
+            t.title = qsTr("Settings");
+        else if (window.activeView === "pc")
+            t.title = core.hostname || qsTr("This PC");
+        else
+            t.title = engine.current_dir_name;
     }
 
     function restoreTab(i) {
         var t = tabs[i];
+        if (!t) return;
         currentTab = i;
-        // Never leave activePane pointing at a pane that is being destroyed.
         activePane = pane0;
-        // Selections belong to the tab that made them.
         pane0.clearSelection();
         pane0.renamingPath = "";
         if (pane1Loader.item) {
             pane1Loader.item.clearSelection();
             pane1Loader.item.renamingPath = "";
         }
-        splitView = t.split;
-        if (t.states[0])
+        splitView = !!t.split;
+        if (t.states && t.states[0])
             pane0.engine.restore_state(t.states[0]);
-        if (t.split && pane1Loader.item && t.states[1])
+        if (t.split && pane1Loader.item && t.states && t.states[1])
             pane1Loader.item.engine.restore_state(t.states[1]);
         activePane = (t.split && t.active === 1 && pane1Loader.item) ? pane1Loader.item : pane0;
-        showFiles();
+        if (t.view === "settings")
+            window.activeView = "settings";
+        else if (t.view === "pc")
+            window.activeView = "pc";
+        else
+            showFiles();
     }
 
     function switchTab(i) {
@@ -278,10 +289,19 @@ ApplicationWindow {
 
     function newTab(path) {
         saveCurrentTab();
-        var target = path || core.user_dir("HOME");
+        var isSettings = path === "settings://";
+        var isPc = path === "pc://";
+        var target = (isSettings || isPc) ? "" : (path || core.user_dir("HOME"));
         var list = tabs.slice();
         var state = JSON.stringify({ location: target, back: [], forward: [] });
-        list.splice(currentTab + 1, 0, { states: [state, ""], split: false, active: 0, title: titleFromState(state) });
+        var title = isSettings ? qsTr("Settings") : (isPc ? (core.hostname || qsTr("This PC")) : titleFromState(state));
+        list.splice(currentTab + 1, 0, {
+            states: [state, ""],
+            split: false,
+            active: 0,
+            title: title,
+            view: isSettings ? "settings" : (isPc ? "pc" : "files")
+        });
         tabs = list;
         restoreTab(currentTab + 1);
     }
@@ -692,18 +712,18 @@ ApplicationWindow {
             spacing: 10
 
             Rectangle {
-                id: adminBadge
-                visible: native.isAdmin
-                Layout.preferredWidth: adminRow.implicitWidth + 24
+                id: brandBadge
+                visible: (theme.showBrandBadge && window.width >= 820) || native.isAdmin
+                Layout.preferredWidth: brandRow.implicitWidth + 24
                 Layout.preferredHeight: 42
                 radius: theme.radiusFull
-                color: theme.dangerContainer
+                color: native.isAdmin ? theme.dangerContainer : theme.surfaceContainer
                 RowLayout {
-                    id: adminRow
+                    id: brandRow
                     anchors.centerIn: parent
                     spacing: 8
-                    LoafIcon { name: "shield-check"; size: 18; color: theme.danger }
-                    Text { text: qsTr("Admin"); color: theme.danger; font.pixelSize: theme.fs(14); font.bold: true }
+                    LoafIcon { name: native.isAdmin ? "shield-check" : "bread"; size: 18; color: native.isAdmin ? theme.danger : theme.primary }
+                    Text { text: native.isAdmin ? qsTr("Admin") : "Loaf"; color: native.isAdmin ? theme.danger : theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
                 }
             }
 
@@ -1223,6 +1243,7 @@ ApplicationWindow {
                 id: sidebar
                 Layout.fillHeight: true
                 Layout.preferredWidth: implicitWidth
+                Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
                 activeId: {
                     if (window.activeView === "settings")
                         return "settings";
@@ -1239,9 +1260,17 @@ ApplicationWindow {
                 }
                 onPlaceClicked: function(place, inNewTab) {
                     if (place.kind === "pc") {
-                        window.activeView = "pc";
-                        core.load_drives();
-                        core.refresh_frequent_dirs();
+                        if (inNewTab) {
+                            window.newTab("pc://");
+                            return;
+                        }
+                        for (var p = 0; p < window.tabs.length; ++p) {
+                            if (window.tabs[p] && window.tabs[p].view === "pc") {
+                                window.switchTab(p);
+                                return;
+                            }
+                        }
+                        window.newTab("pc://");
                         return;
                     }
                     if (inNewTab && place.path) {
@@ -1261,7 +1290,19 @@ ApplicationWindow {
                     else
                         engine.set_path(place.path);
                 }
-                onSettingsClicked: window.activeView = (window.activeView === "settings") ? "files" : "settings"
+                onSettingsClicked: {
+                    if (window.activeView === "settings") {
+                        window.showFiles();
+                        return;
+                    }
+                    for (var s = 0; s < window.tabs.length; ++s) {
+                        if (window.tabs[s] && window.tabs[s].view === "settings") {
+                            window.switchTab(s);
+                            return;
+                        }
+                    }
+                    window.newTab("settings://");
+                }
                 onPlaceMenuRequested: function(place, x, y) { placeMenu.showFor(place, x, y); }
             }
 
@@ -1301,7 +1342,8 @@ ApplicationWindow {
                         readonly property bool isSplit: current ? window.splitView
                             : !!(window.tabs[index] && window.tabs[index].split)
 
-                        readonly property string leftName: current ? pane0.engine.current_dir_name
+                        readonly property string leftName: current
+                            ? (window.activeView === "settings" ? qsTr("Settings") : (window.activeView === "pc" ? (core.hostname || qsTr("This PC")) : pane0.engine.current_dir_name))
                             : (window.tabs[index] ? (window.tabs[index].title || qsTr("Tab")) : "")
                         readonly property string rightName: current ? (pane1Loader.item ? pane1Loader.item.engine.current_dir_name : (window.tabs[index] ? window.tabs[index].rightTitle || qsTr("Split") : qsTr("Split")))
                             : (window.tabs[index] ? (window.tabs[index].rightTitle || qsTr("Split")) : qsTr("Split"))
@@ -1322,7 +1364,11 @@ ApplicationWindow {
                             spacing: 6
 
                             LoafIcon {
-                                name: tabDelegate.isSplit ? "columns" : "folder"
+                                name: tabDelegate.current
+                                    ? (window.activeView === "settings" ? "gear" : (window.activeView === "pc" ? "desktop" : (tabDelegate.isSplit ? "columns" : "folder")))
+                                    : (window.tabs[tabDelegate.index] && window.tabs[tabDelegate.index].view === "settings" ? "gear"
+                                        : (window.tabs[tabDelegate.index] && window.tabs[tabDelegate.index].view === "pc" ? "desktop"
+                                            : (tabDelegate.isSplit ? "columns" : "folder")))
                                 size: 14
                                 color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMuted
                             }
@@ -1417,70 +1463,110 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
+                Item {
                     id: mainStage
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                radius: theme.radiusXl
-                color: theme.surfaceContainerLow
-                clip: true
-                border.width: window.keyboardNavActive ? 2 : 0
-                border.color: theme.primary
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 18
-                    spacing: 12
-                    visible: window.activeView === "files"
+                    RowLayout {
+                        id: paneRow
+                        anchors.fill: parent
+                        spacing: 14
+                        visible: window.activeView === "files"
 
-                    FilePane {
-                        id: pane0
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        isActive: window.activePane === pane0
-                        onActivated: window.setActivePane(pane0)
-                        opacity: window.splitView && !isActive ? 0.85 : 1.0
+                        // Left Pane Container
+                        Rectangle {
+                            id: pane0Container
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: theme.radiusXl
+                            color: theme.surfaceContainerLow
+                            clip: true
+                            border.width: (window.splitView && window.activePane === pane0) ? 2 : (window.splitView ? 1 : (window.keyboardNavActive ? 2 : 0))
+                            border.color: (window.splitView && window.activePane === pane0) ? theme.primary : (window.splitView ? theme.outlineVariant : theme.primary)
+                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+
+                            FilePane {
+                                id: pane0
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                isActive: window.activePane === pane0
+                                onActivated: window.setActivePane(pane0)
+                                opacity: window.splitView && !isActive ? 0.90 : 1.0
+                            }
+                        }
+
+                        // Right Pane Container (Sliding Accordion Animation)
+                        Rectangle {
+                            id: pane1Container
+                            Layout.fillHeight: true
+                            Layout.preferredWidth: window.splitView ? Math.round((paneRow.width - paneRow.spacing) / 2) : 0
+                            visible: width > 2
+                            opacity: window.splitView ? 1.0 : 0.0
+                            radius: theme.radiusXl
+                            color: theme.surfaceContainerLow
+                            clip: true
+                            border.width: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? 2 : 1
+                            border.color: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? theme.primary : theme.outlineVariant
+
+                            Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
+                            Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+
+                            Loader {
+                                id: pane1Loader
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                active: window.splitView || pane1Container.width > 20
+                                sourceComponent: FilePane {
+                                    id: pane1
+                                    isActive: window.activePane === pane1
+                                    onActivated: window.setActivePane(pane1)
+                                    opacity: !isActive ? 0.90 : 1.0
+                                }
+                            }
+                        }
                     }
 
                     Rectangle {
-                        visible: window.splitView
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 1
-                        color: theme.outlineVariant
+                        id: settingsContainer
+                        anchors.fill: parent
+                        radius: theme.radiusXl
+                        color: theme.surfaceContainerLow
+                        clip: true
+                        visible: opacity > 0.01
+                        opacity: window.activeView === "settings" ? 1.0 : 0.0
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                        SettingsView {
+                            id: settingsView
+                            anchors.fill: parent
+                            anchors.margins: 22
+                            searchQuery: window.activeView === "settings" ? searchInput.text : ""
+                        }
                     }
 
-                    Loader {
-                        id: pane1Loader
-                        active: window.splitView
-                        visible: active
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        sourceComponent: FilePane {
-                            id: pane1
-                            isActive: window.activePane === pane1
-                            onActivated: window.setActivePane(pane1)
-                            opacity: !isActive ? 0.85 : 1.0
+                    Rectangle {
+                        id: pcContainer
+                        anchors.fill: parent
+                        radius: theme.radiusXl
+                        color: theme.surfaceContainerLow
+                        clip: true
+                        visible: opacity > 0.01
+                        opacity: window.activeView === "pc" ? 1.0 : 0.0
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+
+                        PCView {
+                            id: pcView
+                            anchors.fill: parent
+                            anchors.margins: 22
                         }
                     }
                 }
-
-                SettingsView {
-                    id: settingsView
-                    anchors.fill: parent
-                    anchors.margins: 22
-                    searchQuery: window.activeView === "settings" ? searchInput.text : ""
-                    visible: window.activeView === "settings"
-                }
-
-                PCView {
-                    id: pcView
-                    anchors.fill: parent
-                    anchors.margins: 22
-                    visible: window.activeView === "pc"
-                }
             }
         }
-    }
     }
 
     OperationsPanel {
@@ -2384,6 +2470,12 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.separator }
+        LoafSwitch {
+            label: qsTr("Hide Trash when empty (shows when dragging)")
+            checked: theme.hideTrashWhenEmpty
+            onToggled: function(c) { theme.hideTrashWhenEmpty = c; }
         }
         RowLayout {
             Layout.fillWidth: true

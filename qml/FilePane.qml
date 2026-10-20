@@ -653,9 +653,20 @@ Item {
 
                     readonly property bool isSelected: !!pane.selection[path]
                     readonly property bool isCut: !!window.cutSet[path]
-                    readonly property int col: index % Math.max(1, Math.floor(gridView.width / gridView.cellWidth))
+                    readonly property int cols: pane.cols()
+                    readonly property int col: index % Math.max(1, cols)
+                    readonly property int rowIdx: Math.floor(index / Math.max(1, cols))
+
                     readonly property bool hasLeft: isSelected && col > 0 && !!pane.selection[paneEngine.path_at(index - 1)]
-                    readonly property bool hasRight: isSelected && col < pane.cols() - 1 && index + 1 < paneEngine.item_count && !!pane.selection[paneEngine.path_at(index + 1)]
+                    readonly property bool hasRight: isSelected && col < cols - 1 && index + 1 < paneEngine.item_count && !!pane.selection[paneEngine.path_at(index + 1)]
+                    readonly property bool hasTop: isSelected && index >= cols && !!pane.selection[paneEngine.path_at(index - cols)]
+                    readonly property bool hasBottom: isSelected && index + cols < paneEngine.item_count && !!pane.selection[paneEngine.path_at(index + cols)]
+
+                    readonly property bool hasTopLeft: isSelected && hasTop && hasLeft && !!pane.selection[paneEngine.path_at(index - cols - 1)]
+                    readonly property bool hasTopRight: isSelected && hasTop && hasRight && !!pane.selection[paneEngine.path_at(index - cols + 1)]
+                    readonly property bool hasBottomLeft: isSelected && hasBottom && hasLeft && !!pane.selection[paneEngine.path_at(index + cols - 1)]
+                    readonly property bool hasBottomRight: isSelected && hasBottom && hasRight && !!pane.selection[paneEngine.path_at(index + cols + 1)]
+
                     readonly property bool isDropTarget: is_dir && folderDrop.containsDrag
                     readonly property bool hasThumb: theme.showThumbnails && thumbable && thumbImg.status === Image.Ready
                     readonly property bool isCursor: window.keyboardNavActive && pane.isActive && pane.cursorPath === path
@@ -663,8 +674,6 @@ Item {
                     Accessible.role: Accessible.ListItem
                     Accessible.name: name
                     Accessible.selected: isSelected
-
-                    opacity: isCut ? 0.5 : 1.0
 
                     property bool entered: !theme.animate
                     Component.onCompleted: entered = true
@@ -682,34 +691,48 @@ Item {
                     Rectangle {
                         id: highlight
                         anchors.fill: parent
-                        anchors.topMargin: 4
-                        anchors.bottomMargin: 4
-                        anchors.leftMargin: card.hasLeft ? -4 : 4
-                        anchors.rightMargin: card.hasRight ? -4 : 4
-                        radius: theme.radiusL
+                        anchors.topMargin: card.hasTop ? -6 : 4
+                        anchors.bottomMargin: card.hasBottom ? -6 : 4
+                        anchors.leftMargin: card.hasLeft ? -6 : 4
+                        anchors.rightMargin: card.hasRight ? -6 : 4
+                        radius: (card.hasLeft || card.hasRight || card.hasTop || card.hasBottom) ? theme.radiusM : theme.radiusL
                         color: card.isDropTarget
                             ? Qt.rgba(theme.primary.r, theme.primary.g, theme.primary.b, theme.isDark ? 0.20 : 0.14)
                             : (card.isSelected ? theme.secondaryContainer : (cardMouse.pressed ? theme.activeOverlay : theme.hoverOverlay))
                         opacity: (card.isSelected || cardMouse.containsMouse || card.isDropTarget) ? 1.0 : 0.0
                         border.color: card.isCursor || card.isDropTarget ? theme.primary : "transparent"
                         border.width: card.isCursor || card.isDropTarget ? 2 : 0
-                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
 
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                        Behavior on anchors.leftMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
+                        Behavior on anchors.rightMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
+                        Behavior on anchors.topMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
+                        Behavior on anchors.bottomMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
+
+                        // Diagonal seam fills (connects corners smoothly)
                         Rectangle {
-                            visible: card.hasRight
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: parent.width / 2
-                            color: parent.color
+                            visible: card.hasTop && card.hasLeft && card.hasTopLeft
+                            width: 14; height: 14; x: -7; y: -7
+                            color: highlight.color
+                            radius: 0
                         }
                         Rectangle {
-                            visible: card.hasLeft
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: parent.width / 2
-                            color: parent.color
+                            visible: card.hasTop && card.hasRight && card.hasTopRight
+                            width: 14; height: 14; x: parent.width - 7; y: -7
+                            color: highlight.color
+                            radius: 0
+                        }
+                        Rectangle {
+                            visible: card.hasBottom && card.hasLeft && card.hasBottomLeft
+                            width: 14; height: 14; x: -7; y: parent.height - 7
+                            color: highlight.color
+                            radius: 0
+                        }
+                        Rectangle {
+                            visible: card.hasBottom && card.hasRight && card.hasBottomRight
+                            width: 14; height: 14; x: parent.width - 7; y: parent.height - 7
+                            color: highlight.color
+                            radius: 0
                         }
                     }
 
@@ -718,6 +741,9 @@ Item {
                     Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                     ColumnLayout {
+                        id: cardContentCol
+                        opacity: card.isCut ? 0.52 : 1.0
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
                         anchors.fill: parent
                         anchors.margins: 12 * pane.zoom
                         spacing: 6
@@ -853,7 +879,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                         preventStealing: true
                         onWheel: function(wheel) { wheel.accepted = false; }
 
@@ -889,6 +915,10 @@ Item {
                         onReleased: if (dragging) { dragManager.end(); dragging = false; }
                         onCanceled: if (dragging) { dragManager.end(); dragging = false; }
                         onClicked: function(mouse) {
+                            if (mouse.button === Qt.MiddleButton) {
+                                window.newTab(card.path);
+                                return;
+                            }
                             if (mouse.button === Qt.RightButton) {
                                 if (!card.isSelected)
                                     pane.selectRow(card.index, false, false);
@@ -1235,7 +1265,7 @@ Item {
                         id: rowMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                         cursorShape: Qt.PointingHandCursor
                         preventStealing: true
                         onWheel: function(wheel) { wheel.accepted = false; }
@@ -1272,6 +1302,10 @@ Item {
                         onReleased: if (dragging) { dragManager.end(); dragging = false; }
                         onCanceled: if (dragging) { dragManager.end(); dragging = false; }
                         onClicked: function(mouse) {
+                            if (mouse.button === Qt.MiddleButton) {
+                                window.newTab(row.path);
+                                return;
+                            }
                             if (mouse.button === Qt.RightButton) {
                                 if (!row.isSelected)
                                     pane.selectRow(row.index, false, false);

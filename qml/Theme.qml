@@ -16,6 +16,7 @@ Item {
     property bool experimentalPcCustomization: false
     property string contextMenuMode: "full" // "full", "minimal", "custom"
     property var disabledMenuItems: ({})
+    property bool hideTrashWhenEmpty: true
 
     // ---- performance / accessibility ---------------------------------------
     // "auto" turns low-power mode on when Qt renders without a GPU.
@@ -76,15 +77,10 @@ Item {
         }
     }
 
-    property bool isDark: {
-        if (themeMode === "dark") return true;
-        if (themeMode === "light") return false;
-        if (typeof core !== "undefined" && core && typeof core.is_dark === "boolean") {
-            return core.is_dark;
-        }
-        if (Application.styleHints && Application.styleHints.colorScheme === Qt.Light) return false;
-        return true;
-    }
+    readonly property bool isDark: themeMode === "dark" ? true
+        : (themeMode === "light" ? false
+        : ((typeof core !== "undefined" && core && typeof core.is_dark === "boolean") ? core.is_dark
+        : ((Application.styleHints && Application.styleHints.colorScheme === Qt.Light) ? false : true)))
 
     readonly property var wallpaperData: {
         try {
@@ -114,23 +110,23 @@ Item {
             darkOutline: (wallpaperData && wallpaperData.outline) ? wallpaperData.outline : "#92908a",
             darkOutlineVariant: (wallpaperData && wallpaperData.outline_variant) ? wallpaperData.outline_variant : "#484742",
 
-            lightBg: (wallpaperData && wallpaperData.background) ? wallpaperData.background : "#fef8f4",
-            lightSurfaceLowest: (wallpaperData && wallpaperData.surface_container_lowest) ? wallpaperData.surface_container_lowest : "#ffffff",
-            lightSurfaceLow: (wallpaperData && wallpaperData.surface_container_low) ? wallpaperData.surface_container_low : "#f9f2ec",
-            lightSurface: (wallpaperData && wallpaperData.surface_container) ? wallpaperData.surface_container : "#f3ece4",
-            lightSurfaceHigh: (wallpaperData && wallpaperData.surface_container_high) ? wallpaperData.surface_container_high : "#ede5dc",
-            lightSurfaceHighest: (wallpaperData && wallpaperData.surface_container_highest) ? wallpaperData.surface_container_highest : "#e7ded4",
-            lightPrimary: (wallpaperData && wallpaperData.primary) ? wallpaperData.primary : "#655e48",
-            lightFg: (wallpaperData && wallpaperData.on_primary) ? wallpaperData.on_primary : "#ffffff",
+            lightBg: "#fef8f4",
+            lightSurfaceLowest: "#ffffff",
+            lightSurfaceLow: "#f9f2ec",
+            lightSurface: "#f3ece4",
+            lightSurfaceHigh: "#ede5dc",
+            lightSurfaceHighest: "#e7ded4",
+            lightPrimary: (wallpaperData && wallpaperData.inverse_primary) ? wallpaperData.inverse_primary : ((wallpaperData && wallpaperData.primary) ? wallpaperData.primary : "#655e48"),
+            lightFg: "#ffffff",
             lightContainer: (wallpaperData && wallpaperData.primary_container) ? wallpaperData.primary_container : "#ece2c6",
             lightContainerFg: (wallpaperData && wallpaperData.on_primary_container) ? wallpaperData.on_primary_container : "#201b0a",
             lightSecondaryContainer: (wallpaperData && wallpaperData.secondary_container) ? wallpaperData.secondary_container : "#ece2c6",
             lightSecondaryContainerFg: (wallpaperData && wallpaperData.on_secondary_container) ? wallpaperData.on_secondary_container : "#201b0a",
             lightTertiaryContainer: (wallpaperData && wallpaperData.tertiary_container) ? wallpaperData.tertiary_container : "#f0ddd0",
-            lightTextMain: (wallpaperData && wallpaperData.on_surface) ? wallpaperData.on_surface : "#1d1c16",
-            lightTextMuted: (wallpaperData && wallpaperData.on_surface_variant) ? wallpaperData.on_surface_variant : "#494740",
-            lightOutline: (wallpaperData && wallpaperData.outline) ? wallpaperData.outline : "#7a7770",
-            lightOutlineVariant: (wallpaperData && wallpaperData.outline_variant) ? wallpaperData.outline_variant : "#cbc7be"
+            lightTextMain: "#1d1c16",
+            lightTextMuted: "#494740",
+            lightOutline: "#7a7770",
+            lightOutlineVariant: "#cbc7be"
         },
         "lavender": {
             darkBg: "#121214",
@@ -2027,6 +2023,8 @@ Item {
         if (value.length > 0) {
             try { disabledMenuItems = JSON.parse(value); } catch (e) { disabledMenuItems = {}; }
         }
+        value = readSetting("hideTrashWhenEmpty");
+        if (value.length > 0) hideTrashWhenEmpty = (value === "true");
         loaded = true;
     }
 
@@ -2057,4 +2055,5 @@ Item {
     onSearchContentsChanged: writeSetting("searchContents", searchContents)
     onContextMenuModeChanged: writeSetting("contextMenuMode", contextMenuMode)
     onDisabledMenuItemsChanged: writeSetting("disabledMenuItems", JSON.stringify(disabledMenuItems))
+    onHideTrashWhenEmptyChanged: writeSetting("hideTrashWhenEmpty", hideTrashWhenEmpty)
 }

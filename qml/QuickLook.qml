@@ -16,14 +16,14 @@ LoafPopup {
     Shortcut { sequence: "Space"; enabled: quickLook.visible; onActivated: quickLook.close() }
 
     transformOrigin: Item.Center
-    scale: 0.72
+    scale: 0.15
     opacity: 0.0
 
     enter: Transition {
         enabled: theme.animate
         ParallelAnimation {
-            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 220; easing.type: Easing.OutCubic }
-            NumberAnimation { property: "scale"; from: 0.72; to: 1.0; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.15 }
+            NumberAnimation { property: "opacity"; from: 0.0; to: 1.0; duration: 240; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "scale"; from: 0.15; to: 1.0; duration: 280; easing.type: Easing.OutBack; easing.overshoot: 1.15 }
         }
     }
 
@@ -31,7 +31,7 @@ LoafPopup {
         enabled: theme.animate
         ParallelAnimation {
             NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 160; easing.type: Easing.InCubic }
-            NumberAnimation { property: "scale"; from: 1.0; to: 0.78; duration: 160; easing.type: Easing.InCubic }
+            NumberAnimation { property: "scale"; from: 1.0; to: 0.20; duration: 160; easing.type: Easing.InCubic }
         }
     }
 

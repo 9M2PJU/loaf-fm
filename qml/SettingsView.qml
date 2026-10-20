@@ -44,18 +44,18 @@ Item {
     readonly property bool card18Match: matchesQuery("search file contents text inside")
 
     readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card3Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
-        + (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
         + (card16Match ? 1 : 0) + (card17Match ? 1 : 0) + (card18Match ? 1 : 0)
+    readonly property int accessibilityMatches: (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
     readonly property int experimentalMatches: (card10Match ? 1 : 0) + (card12Match ? 1 : 0)
     readonly property int aboutMatches: (card11Match ? 1 : 0)
-    readonly property int totalMatches: interfaceMatches + behaviorMatches + experimentalMatches + aboutMatches
+    readonly property int totalMatches: interfaceMatches + behaviorMatches + accessibilityMatches + experimentalMatches + aboutMatches
 
     // Space still claimed above `panel` by panels that are painted while fading
     // out. Overlapping the incoming tab with the outgoing one lets the switch
     // cross-fade instead of dropping the outgoing panel in one frame.
     function fadeOverlapAbove(panel) {
-        var panels = [tabInterface, tabBehavior, tabExperimental, tabAbout];
+        var panels = [tabInterface, tabBehavior, tabAccessibility, tabExperimental, tabAbout];
         var overlap = 0;
         for (var i = 0; i < panels.length; i++) {
             var p = panels[i];
@@ -122,6 +122,7 @@ Item {
                         model: [
                             { name: "Interface", iconName: "palette" },
                             { name: "Behavior", iconName: "gear" },
+                            { name: "Accessibility", iconName: "person-arms-spread" },
                             { name: "Experimental", iconName: "sparkle" },
                             { name: "About Loaf", iconName: "bread" }
                         ]
@@ -210,7 +211,7 @@ Item {
                     Text {
                         text: settingsView.searchQuery.length > 0
                             ? "Settings"
-                            : (settingsView.activeTab === 0 ? "Interface" : (settingsView.activeTab === 1 ? "Behavior" : (settingsView.activeTab === 2 ? "Experimental" : "About Loaf")))
+                            : (settingsView.activeTab === 0 ? "Interface" : (settingsView.activeTab === 1 ? "Behavior" : (settingsView.activeTab === 2 ? "Accessibility" : (settingsView.activeTab === 3 ? "Experimental" : "About Loaf"))))
                         color: theme.textMain
                         font.pixelSize: theme.fs(26)
                         font.bold: true
@@ -690,42 +691,6 @@ Item {
                                 }
                             }
                         }
-                        // Performance: low-power mode
-                        SettingCard {
-                            visible: settingsView.searchQuery.length === 0 || settingsView.card13Match
-                            title: qsTr("Low-power mode")
-                            subtitle: (theme.softwareRendering || core.low_end_hardware)
-                                ? qsTr("This computer looks low-end (no GPU acceleration, little memory or few cores), so Auto keeps it on. Disables animations, thumbnail masks and background effects.")
-                                : qsTr("Disables animations, thumbnail masks and background effects for older or battery-powered machines")
-                            LoafSegmented {
-                                Layout.preferredWidth: 220
-                                options: [{ value: "auto", label: qsTr("Auto") }, { value: "on", label: qsTr("On") }, { value: "off", label: qsTr("Off") }]
-                                value: theme.lowPowerSetting
-                                onSelected: function(v) { theme.lowPowerSetting = v; }
-                            }
-                        }
-
-                        SettingCard {
-                            visible: settingsView.searchQuery.length === 0 || settingsView.card14Match
-                            title: qsTr("Reduce motion")
-                            subtitle: qsTr("Turn off springs, fades and slide transitions")
-                            LoafSwitch {
-                                checked: theme.reduceMotionSetting
-                                onToggled: function(c) { theme.reduceMotionSetting = c; }
-                            }
-                        }
-
-                        SettingCard {
-                            visible: settingsView.searchQuery.length === 0 || settingsView.card15Match
-                            title: qsTr("Text size")
-                            subtitle: qsTr("Scales all text; also follows the desktop font size")
-                            LoafSegmented {
-                                Layout.preferredWidth: 260
-                                options: [{ value: 0.9, label: "90%" }, { value: 1.0, label: "100%" }, { value: 1.15, label: "115%" }, { value: 1.3, label: "130%" }]
-                                value: theme.fontScaleSetting
-                                onSelected: function(v) { theme.fontScaleSetting = v; }
-                            }
-                        }
                     }
 
 
@@ -982,14 +947,76 @@ Item {
 
 
                     // ==========================================
-                    // TAB 2: EXPERIMENTAL
+                    // TAB 2: ACCESSIBILITY
+                    // ==========================================
+                    ColumnLayout {
+                        id: tabAccessibility
+                        Layout.fillWidth: true
+                        spacing: 14
+
+                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.accessibilityMatches > 0) : (settingsView.activeTab === 2)
+                        readonly property real fadeOverlap: settingsView.fadeOverlapAbove(tabAccessibility)
+                        property real slideOffset: shown ? 0 : 6
+
+                        Layout.topMargin: -fadeOverlap
+                        Layout.bottomMargin: fadeOverlap
+
+                        visible: shown || opacity > 0.001
+                        opacity: shown ? 1.0 : 0.0
+                        enabled: shown
+
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        transform: Translate { y: tabAccessibility.slideOffset }
+
+                        // Performance: low-power mode
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card13Match
+                            title: qsTr("Low-power mode")
+                            subtitle: (theme.softwareRendering || core.low_end_hardware)
+                                ? qsTr("This computer looks low-end (no GPU acceleration, little memory or few cores), so Auto keeps it on. Disables animations, thumbnail masks and background effects.")
+                                : qsTr("Disables animations, thumbnail masks and background effects for older or battery-powered machines")
+                            LoafSegmented {
+                                Layout.preferredWidth: 220
+                                options: [{ value: "auto", label: qsTr("Auto") }, { value: "on", label: qsTr("On") }, { value: "off", label: qsTr("Off") }]
+                                value: theme.lowPowerSetting
+                                onSelected: function(v) { theme.lowPowerSetting = v; }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card14Match
+                            title: qsTr("Reduce motion")
+                            subtitle: qsTr("Turn off springs, fades and slide transitions")
+                            LoafSwitch {
+                                checked: theme.reduceMotionSetting
+                                onToggled: function(c) { theme.reduceMotionSetting = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card15Match
+                            title: qsTr("Text size")
+                            subtitle: qsTr("Scales all text; also follows the desktop font size")
+                            LoafSegmented {
+                                Layout.preferredWidth: 260
+                                options: [{ value: 0.9, label: "90%" }, { value: 1.0, label: "100%" }, { value: 1.15, label: "115%" }, { value: 1.3, label: "130%" }]
+                                value: theme.fontScaleSetting
+                                onSelected: function(v) { theme.fontScaleSetting = v; }
+                            }
+                        }
+                    }
+
+
+                    // ==========================================
+                    // TAB 3: EXPERIMENTAL
                     // ==========================================
                     ColumnLayout {
                         id: tabExperimental
                         Layout.fillWidth: true
                         spacing: 14
 
-                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.experimentalMatches > 0) : (settingsView.activeTab === 2)
+                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.experimentalMatches > 0) : (settingsView.activeTab === 3)
                         readonly property real fadeOverlap: settingsView.fadeOverlapAbove(tabExperimental)
                         property real slideOffset: shown ? 0 : 6
 
@@ -1126,7 +1153,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 14
 
-                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.aboutMatches > 0) : (settingsView.activeTab === 3)
+                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.aboutMatches > 0) : (settingsView.activeTab === 4)
                         readonly property real fadeOverlap: settingsView.fadeOverlapAbove(tabAbout)
                         property real slideOffset: shown ? 0 : 6
 

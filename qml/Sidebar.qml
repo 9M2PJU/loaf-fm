@@ -32,6 +32,8 @@ Rectangle {
         return { id: "trash", kind: "trash", name: qsTr("Trash"), path: "trash:///", icon: "trash", system_icon: "user-trash-symbolic" };
     }
 
+    readonly property bool showTrash: !theme.hideTrashWhenEmpty || (typeof core !== "undefined" && core && !core.trash_empty) || (typeof dragManager !== "undefined" && dragManager && dragManager.active)
+
     radius: theme.radiusXl
     color: theme.surfaceContainer
     clip: true
@@ -47,67 +49,34 @@ Rectangle {
         anchors.bottomMargin: 14
         spacing: 8
 
-        // Loaf Brand & Expand/Collapse Header Button
+        // Expand / collapse toggle (restored from before PR #24)
         Item {
-            id: brandHeaderButton
             Layout.fillWidth: true
-            implicitHeight: 44
+            Layout.preferredHeight: 44
             height: 44
 
             Rectangle {
-                x: 12
-                width: rail.expanded ? parent.width - 24 : 44
+                width: 44
                 height: 44
                 radius: 22
-                color: brandHeaderMouse.containsMouse ? theme.hoverOverlay : "transparent"
+                x: 12
+                color: toggleMouse.containsMouse ? theme.surfaceContainerHigh : "transparent"
                 Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
-                Behavior on width { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
-            }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: rail.expanded ? 18 : 12
-                spacing: 8
-
-                Item {
-                    width: 44
-                    height: 44
-                    LoafIcon {
-                        anchors.centerIn: parent
-                        name: "bread"
-                        size: 22
-                        color: theme.primary
-                    }
-                }
-
-                Text {
-                    visible: rail.expanded
-                    opacity: rail.expanded ? 1.0 : 0.0
-                    text: "Loaf"
-                    color: theme.textMain
-                    font.pixelSize: theme.fs(15)
-                    font.bold: true
-                    Layout.fillWidth: true
-                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 150 } }
-                }
 
                 LoafIcon {
-                    visible: rail.expanded
-                    opacity: rail.expanded ? 1.0 : 0.0
-                    name: "sidebar-simple"
-                    size: 16
-                    color: theme.outline
-                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 150 } }
+                    anchors.centerIn: parent
+                    name: rail.expanded ? "sidebar" : "sidebar-simple"
+                    size: 20
+                    color: theme.textMain
                 }
-            }
 
-            MouseArea {
-                id: brandHeaderMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: rail.expanded = !rail.expanded
+                MouseArea {
+                    id: toggleMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: rail.expanded = !rail.expanded
+                }
             }
         }
 
@@ -177,22 +146,34 @@ Rectangle {
             }
         }
 
-        // Pinned Trash right above Settings
-        RailButton {
-            id: trashButton
+        // Animated Pinned Trash right above Settings
+        Item {
+            id: trashContainer
             Layout.fillWidth: true
-            iconName: "trash"
-            systemIcon: "user-trash-symbolic"
-            label: qsTr("Trash")
-            showLabel: rail.expanded
-            selected: rail.activeId === "trash"
-            accessibleName: qsTr("Trash")
-            acceptsTrashDrop: true
-            onClicked: rail.placeClicked(rail.trashPlace, false)
-            onMiddleClicked: rail.placeClicked(rail.trashPlace, true)
-            onMenuRequested: function(x, y) { rail.placeMenuRequested(rail.trashPlace, x, y); }
-            onFilesDropped: function(paths, asCopy) {
-                core.trash_items(JSON.stringify(paths));
+            visible: height > 0.01
+            clip: true
+            height: rail.showTrash ? 44 : 0
+            opacity: rail.showTrash ? 1.0 : 0.0
+
+            Behavior on height { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+            Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+            RailButton {
+                id: trashButton
+                anchors.fill: parent
+                iconName: "trash"
+                systemIcon: "user-trash-symbolic"
+                label: qsTr("Trash")
+                showLabel: rail.expanded
+                selected: rail.activeId === "trash"
+                accessibleName: qsTr("Trash")
+                acceptsTrashDrop: true
+                onClicked: rail.placeClicked(rail.trashPlace, false)
+                onMiddleClicked: rail.placeClicked(rail.trashPlace, true)
+                onMenuRequested: function(x, y) { rail.placeMenuRequested(rail.trashPlace, x, y); }
+                onFilesDropped: function(paths, asCopy) {
+                    core.trash_items(JSON.stringify(paths));
+                }
             }
         }
 
@@ -253,6 +234,8 @@ Rectangle {
             width: 44
             height: 44
             opacity: btn.dimmed ? 0.45 : 1.0
+            scale: mouse.pressed ? 0.88 : (mouse.containsMouse ? 1.10 : 1.0)
+            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 4.5; damping: 0.3 } }
 
             LoafIcon {
                 visible: theme.iconSource === "phosphor" || btn.systemIcon.length === 0
@@ -281,7 +264,14 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             visible: opacity > 0.01
             opacity: btn.showLabel ? (btn.dimmed ? 0.5 : 1.0) : 0.0
+            scale: btn.showLabel ? 1.0 : 0.4
+            transformOrigin: Item.Left
+            transform: Translate {
+                x: btn.showLabel ? 0 : -14
+                Behavior on x { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+            }
             Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 160 } }
+            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
             text: btn.label
             color: btn.selected ? theme.primaryContainerFg : (mouse.containsMouse ? theme.textMain : theme.textMuted)
             font.pixelSize: theme.fs(13)

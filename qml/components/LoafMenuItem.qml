@@ -49,25 +49,26 @@ Item {
                 NumberAnimation {
                     target: itemTranslate
                     property: "y"
-                    from: -8
+                    from: -10
                     to: 0
-                    duration: 160
+                    duration: 200
                     easing.type: Easing.OutCubic
                 }
                 NumberAnimation {
                     target: root
                     property: "scale"
-                    from: 0.96
+                    from: 0.90
                     to: 1.0
-                    duration: 160
-                    easing.type: Easing.OutCubic
+                    duration: 220
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 1.2
                 }
                 NumberAnimation {
                     target: root
                     property: "opacity"
                     from: 0.0
                     to: 1.0
-                    duration: 140
+                    duration: 160
                     easing.type: Easing.OutCubic
                 }
             }
@@ -104,8 +105,8 @@ Item {
     function popIn(delayMs) {
         popOutAnim.stop();
         popAnim.stop();
-        itemTranslate.y = -8;
-        root.scale = 0.96;
+        itemTranslate.y = -10;
+        root.scale = 0.90;
         root.opacity = 0.0;
         popAnim.delayMs = delayMs || 0;
         popAnim.start();
