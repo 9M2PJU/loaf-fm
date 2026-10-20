@@ -87,8 +87,8 @@ Item {
     }
 
     function saveCustomization() {
-        engine.set_setting("pcSectionOrder", JSON.stringify(pcView.sectionOrder));
-        engine.set_setting("pcSectionConfig", JSON.stringify(pcView.sectionConfig));
+        core.set_setting("pcSectionOrder", JSON.stringify(pcView.sectionOrder));
+        core.set_setting("pcSectionConfig", JSON.stringify(pcView.sectionConfig));
     }
 
     function moveSection(secId, direction) {
@@ -128,7 +128,7 @@ Item {
 
     readonly property var allDrives: {
         try {
-            return JSON.parse(engine.drives_json || "[]");
+            return JSON.parse(core.drives_json || "[]");
         } catch (e) {
             return [];
         }
@@ -141,7 +141,7 @@ Item {
     })
     readonly property var frequentDirs: {
         try {
-            return JSON.parse(engine.frequent_dirs_json || "[]");
+            return JSON.parse(core.frequent_dirs_json || "[]");
         } catch (e) {
             return [];
         }
@@ -199,15 +199,25 @@ Item {
     function mountDrive(d) {
         if (!d)
             return;
-        engine.mount_drive(d.device);
-        engine.load_drives();
+        if (d.is_locked)
+            core.unlock_drive(d.device, "", false); // keyring first, then asks
+        else
+            core.mount_drive(d.device);
     }
 
     function unmountDrive(d) {
         if (!d)
             return;
-        engine.unmount_drive(d.device);
-        engine.load_drives();
+        core.unmount_drive(d.device);
+    }
+
+    // Folder shortcuts: the user's real (localized) folders, issue #21/#22.
+    readonly property var quickPlaces: {
+        try {
+            return JSON.parse(core.places_json || "[]").filter(function(p) { return p.kind === "place"; });
+        } catch (e) {
+            return [];
+        }
     }
 
     property string renameDevice: ""
@@ -228,14 +238,14 @@ Item {
         var items = [];
 
         items.push({
-            "text": "Open",
+            "text": qsTr("Open"),
             "icon": "folder-open",
             "enabled": mounted,
             "action": function () { pcView.openDrive(d); }
         });
         if (!mounted) {
             items.push({
-                "text": "Mount",
+                "text": qsTr("Mount"),
                 "icon": "download",
                 "separatorBefore": true,
                 "action": function () { pcView.mountDrive(d); }
@@ -243,21 +253,37 @@ Item {
         }
         if (mounted) {
             items.push({
-                "text": "Unmount",
+                "text": qsTr("Unmount"),
                 "icon": "eject",
                 "separatorBefore": true,
                 "action": function () { pcView.unmountDrive(d); }
             });
         }
+        if (external && d.disk) {
+            items.push({
+                "text": qsTr("Eject (Safely Remove)"),
+                "icon": "eject",
+                "separatorBefore": !mounted,
+                "action": function () { core.eject_drive(d.disk); }
+            });
+        }
+        if (d.is_encrypted && d.crypt_device) {
+            items.push({
+                "text": qsTr("Lock Encrypted Drive"),
+                "icon": "lock",
+                "enabled": !mounted,
+                "action": function () { core.lock_drive(d.crypt_device); }
+            });
+        }
         items.push({
-            "text": "Rename",
+            "text": qsTr("Rename"),
             "icon": "pencil-simple",
             "separatorBefore": true,
             "action": function () { pcView.requestRename(d); }
         });
         if (external) {
             items.push({
-                "text": "Eject",
+                "text": qsTr("Eject"),
                 "icon": "eject",
                 "danger": true,
                 "enabled": mounted,
@@ -276,12 +302,12 @@ Item {
 
     Component.onCompleted: {
         try {
-            var order = engine.get_setting("pcSectionOrder");
+            var order = core.get_setting("pcSectionOrder");
             if (order && order.length > 0)
                 pcView.sectionOrder = pcView.normalizeOrder(JSON.parse(order));
         } catch (e) {}
         try {
-            var cfg = engine.get_setting("pcSectionConfig");
+            var cfg = core.get_setting("pcSectionConfig");
             if (cfg && cfg.length > 0)
                 pcView.sectionConfig = pcView.normalizeConfig(JSON.parse(cfg));
         } catch (e) {}
@@ -316,16 +342,16 @@ Item {
                     color: theme.primaryContainer
                     LoafIcon {
                         anchors.centerIn: parent
-                        name: engine.device_type === "laptop" ? "laptop" : "desktop"
+                        name: core.device_type === "laptop" ? "laptop" : "desktop"
                         size: 22
                         color: theme.primaryContainerFg
                     }
                 }
 
                 Text {
-                    text: engine.hostname || "This PC"
+                    text: core.hostname || qsTr("This PC")
                     color: theme.textMain
-                    font.pixelSize: 26
+                    font.pixelSize: theme.fs(26)
                     font.bold: true
                     font.letterSpacing: -0.5
                     Layout.fillWidth: true
@@ -336,7 +362,7 @@ Item {
                 LoafButton {
                     id: customizeBtn
                     visible: pcView.customizationEnabled
-                    text: pcView.customizing ? "Done" : "Customize"
+                    text: pcView.customizing ? qsTr("Done") : qsTr("Customize")
                     icon: pcView.customizing ? "check" : "sliders-horizontal"
                     variant: pcView.customizing ? "tonal" : "outlined"
                     onClicked: pcView.isCustomizing = !pcView.isCustomizing
@@ -365,18 +391,18 @@ Item {
                         icon: sectionDelegate.secKey === "places" ? "folder"
                               : (sectionDelegate.secKey === "frequent" ? "clock"
                               : (sectionDelegate.secKey === "internal" ? "hard-drives" : "usb"))
-                        title: sectionDelegate.secKey === "places" ? "Places"
-                               : (sectionDelegate.secKey === "frequent" ? "Frequent"
-                               : (sectionDelegate.secKey === "internal" ? "Internal Storage" : "External Storage"))
+                        title: sectionDelegate.secKey === "places" ? qsTr("Places")
+                               : (sectionDelegate.secKey === "frequent" ? qsTr("Frequent")
+                               : (sectionDelegate.secKey === "internal" ? qsTr("Internal Storage") : qsTr("External Storage")))
                         subtitle: sectionDelegate.secKey === "external"
-                                  ? (pcView.externalDrives.length + (pcView.externalDrives.length === 1 ? " drive connected" : " drives connected"))
+                                  ? theme.plural(pcView.externalDrives.length, qsTr("1 drive connected"), qsTr("%1 drives connected"))
                                   : ""
 
                         // View mode toggle (places / frequent only)
                         LoafButton {
                             visible: pcView.customizing
                                      && (sectionDelegate.secKey === "places" || sectionDelegate.secKey === "frequent")
-                            text: sectionDelegate.secView === "carousel" ? "Carousel" : "Grid"
+                            text: sectionDelegate.secView === "carousel" ? qsTr("Carousel") : qsTr("Grid")
                             icon: sectionDelegate.secView === "carousel" ? "list" : "squares-four"
                             variant: "tonal"
                             onClicked: pcView.toggleSectionView(sectionDelegate.secKey)
@@ -399,7 +425,7 @@ Item {
                         LoafButton {
                             visible: pcView.customizing
                             icon: sectionDelegate.secVisible ? "x" : "plus"
-                            variant: sectionDelegate.secVisible ? "text" : "tonal"
+                            variant: sectionDelegate.secVisible ? "text" : qsTr("tonal")
                             onClicked: pcView.toggleSectionVisibility(sectionDelegate.secKey)
                         }
                     }
@@ -418,12 +444,12 @@ Item {
                             anchors.centerIn: parent
                             spacing: 12
                             Text {
-                                text: "Section hidden"
+                                text: qsTr("Section hidden")
                                 color: theme.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: theme.fs(12)
                             }
                             LoafButton {
-                                text: "Restore"
+                                text: qsTr("Restore")
                                 icon: "plus"
                                 variant: "tonal"
                                 onClicked: pcView.toggleSectionVisibility(sectionDelegate.secKey)
@@ -448,15 +474,7 @@ Item {
                             rowSpacing: 10
 
                             Repeater {
-                                model: [
-                                    { name: "Home", iconName: "house", pathSuffix: "" },
-                                    { name: "Documents", iconName: "file-text", pathSuffix: "Documents" },
-                                    { name: "Downloads", iconName: "download", pathSuffix: "Downloads" },
-                                    { name: "Pictures", iconName: "image", pathSuffix: "Pictures" },
-                                    { name: "Music", iconName: "music", pathSuffix: "Music" },
-                                    { name: "Videos", iconName: "video", pathSuffix: "Videos" },
-                                    { name: "Projects", iconName: "code", pathSuffix: "Projects" }
-                                ]
+                                model: pcView.quickPlaces
 
                                 delegate: Rectangle {
                                     Layout.fillWidth: true
@@ -465,8 +483,8 @@ Item {
                                     color: theme.surfaceContainer
                                     opacity: placeMouse.containsMouse ? 1.0 : 0.85
                                     scale: placeMouse.pressed ? 0.96 : (placeMouse.containsMouse ? 1.02 : 1.0)
-                                    Behavior on opacity { NumberAnimation { duration: theme.durationFast } }
-                                    Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.32 } }
+                                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                    Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.32 } }
 
                                     RowLayout {
                                         anchors.fill: parent
@@ -475,14 +493,14 @@ Item {
                                         spacing: 10
 
                                         LoafIcon {
-                                            name: modelData.iconName
+                                            name: modelData.icon
                                             size: 20
                                             color: theme.primary
                                         }
                                         Text {
                                             text: modelData.name
                                             color: theme.textMain
-                                            font.pixelSize: 13
+                                            font.pixelSize: theme.fs(13)
                                             font.bold: true
                                             Layout.fillWidth: true
                                             elide: Text.ElideRight
@@ -495,10 +513,8 @@ Item {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
-                                            var homeBase = "/home/" + (engine.current_path.split("/")[2] || "m_uvex");
-                                            var target = modelData.pathSuffix === "" ? homeBase : (homeBase + "/" + modelData.pathSuffix);
-                                            window.showFiles(index + 1);
-                                            engine.set_path(target);
+                                            window.showFiles();
+                                            engine.set_path(modelData.path);
                                         }
                                     }
                                 }
@@ -512,15 +528,7 @@ Item {
                             spacing: 10
                             clip: true
 
-                            model: [
-                                { name: "Home", iconName: "house", pathSuffix: "" },
-                                { name: "Documents", iconName: "file-text", pathSuffix: "Documents" },
-                                { name: "Downloads", iconName: "download", pathSuffix: "Downloads" },
-                                { name: "Pictures", iconName: "image", pathSuffix: "Pictures" },
-                                { name: "Music", iconName: "music", pathSuffix: "Music" },
-                                { name: "Videos", iconName: "video", pathSuffix: "Videos" },
-                                { name: "Projects", iconName: "code", pathSuffix: "Projects" }
-                            ]
+                            model: pcView.quickPlaces
 
                             delegate: Rectangle {
                                 width: 140
@@ -529,13 +537,13 @@ Item {
                                 color: theme.surfaceContainer
                                 opacity: cPlaceMouse.containsMouse ? 1.0 : 0.85
                                 scale: cPlaceMouse.pressed ? 0.95 : 1.0
-                                Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                 RowLayout {
                                     anchors.centerIn: parent
                                     spacing: 8
-                                    LoafIcon { name: modelData.iconName; size: 18; color: theme.primary }
-                                    Text { text: modelData.name; color: theme.textMain; font.pixelSize: 12; font.bold: true }
+                                    LoafIcon { name: modelData.icon; size: 18; color: theme.primary }
+                                    Text { text: modelData.name; color: theme.textMain; font.pixelSize: theme.fs(12); font.bold: true }
                                 }
 
                                 MouseArea {
@@ -544,10 +552,8 @@ Item {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        var homeBase = "/home/" + (engine.current_path.split("/")[2] || "m_uvex");
-                                        var target = modelData.pathSuffix === "" ? homeBase : (homeBase + "/" + modelData.pathSuffix);
-                                        window.showFiles(index + 1);
-                                        engine.set_path(target);
+                                        window.showFiles();
+                                        engine.set_path(modelData.path);
                                     }
                                 }
                             }
@@ -578,14 +584,14 @@ Item {
                                 color: theme.surfaceContainer
                                 opacity: freqCMouse.containsMouse ? 1.0 : 0.85
                                 scale: freqCMouse.pressed ? 0.95 : 1.0
-                                Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                 RowLayout {
                                     id: freqCardRow
                                     anchors.centerIn: parent
                                     spacing: 8
                                     LoafIcon { name: modelData.icon || "folder"; size: 16; color: theme.primary }
-                                    Text { text: modelData.name; color: theme.textMain; font.pixelSize: 12; font.bold: true }
+                                    Text { text: modelData.name; color: theme.textMain; font.pixelSize: theme.fs(12); font.bold: true }
                                 }
 
                                 MouseArea {
@@ -619,13 +625,13 @@ Item {
                                     color: theme.surfaceContainer
                                     opacity: freqGMouse.containsMouse ? 1.0 : 0.85
                                     scale: freqGMouse.pressed ? 0.95 : 1.0
-                                    Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                    Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                     RowLayout {
                                         anchors.centerIn: parent
                                         spacing: 8
                                         LoafIcon { name: modelData.icon || "folder"; size: 16; color: theme.primary }
-                                        Text { text: modelData.name; color: theme.textMain; font.pixelSize: 12; font.bold: true; elide: Text.ElideRight }
+                                        Text { text: modelData.name; color: theme.textMain; font.pixelSize: theme.fs(12); font.bold: true; elide: Text.ElideRight }
                                     }
 
                                     MouseArea {
@@ -667,9 +673,9 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 2
                                     Text {
-                                        text: "System Drive Pool"
+                                        text: qsTr("System Drive Pool")
                                         color: theme.textMain
-                                        font.pixelSize: 15
+                                        font.pixelSize: theme.fs(15)
                                         font.bold: true
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
@@ -679,7 +685,7 @@ Item {
                                               + pcView.formatBytes(pcView.totalInternalBytes) + "  ·  "
                                               + pcView.formatBytes(pcView.freeInternalBytes) + " free"
                                         color: theme.textMuted
-                                        font.pixelSize: 12
+                                        font.pixelSize: theme.fs(12)
                                         Layout.fillWidth: true
                                         elide: Text.ElideRight
                                     }
@@ -760,14 +766,13 @@ Item {
     // Rename drive prompt.
     LoafTextPrompt {
         id: renamePrompt
-        title: "Rename Drive"
-        confirmText: "Rename"
-        placeholder: "Drive name"
+        title: qsTr("Rename Drive")
+        confirmText: qsTr("Rename")
+        placeholder: qsTr("Drive name")
         onAccepted: function (text) {
             var name = String(text).trim();
             if (name.length > 0 && pcView.renameDevice.length > 0) {
-                engine.rename_drive(pcView.renameDevice, name);
-                engine.load_drives();
+                core.rename_drive(pcView.renameDevice, name);
             }
         }
     }

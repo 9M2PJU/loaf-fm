@@ -34,7 +34,7 @@ Item {
         Text {
             text: root.label
             color: theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: theme.fs(12)
             visible: root.label.length > 0
         }
 
@@ -56,9 +56,9 @@ Item {
                 width: Math.max(0, track.segW - 6)
                 x: 3 + root.currentIndex * track.segW
 
-                Behavior on x { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                Behavior on x { enabled: theme.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: theme.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
             }
 
             RowLayout {
@@ -89,7 +89,7 @@ Item {
                             Text {
                                 text: (modelData && modelData.label) ? modelData.label : ""
                                 color: segItem.isCurrent ? theme.secondaryContainerFg : theme.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: theme.fs(12)
                                 font.bold: segItem.isCurrent
                             }
                         }

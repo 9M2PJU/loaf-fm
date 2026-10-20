@@ -4,7 +4,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Depends: libc6 (>= 2.31), libgl1, libglvnd0
-Recommends: qt6-base-dev | libqt6gui6, qt6-declarative-dev | libqt6qml6, qt6-wayland
+Recommends: qt6-base-dev | libqt6gui6, qt6-declarative-dev | libqt6qml6, qt6-wayland, 7zip | p7zip-full, udisks2, ffmpegthumbnailer, xdg-utils, libsecret-tools
 Maintainer: m_uvex <m_uvex@localhost>
 Homepage: https://github.com/m-uvex/loaf
 Description: Material 3 Expressive File Manager

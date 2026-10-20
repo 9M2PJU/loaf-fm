@@ -16,6 +16,8 @@ LoafPopup {
     property real menuMinWidth: 208
     property real menuMaxWidth: 320
     property bool modelVisible: true
+    // Long menus (app lists) scroll instead of running off the screen.
+    property real maxMenuHeight: Math.round(winHeight() * 0.7)
 
     property int highlightIndex: -1
     property var parentMenu: null
@@ -40,6 +42,7 @@ LoafPopup {
     onOpened: {
         menu.reposition();
         menu.highlightIndex = -1;
+        rowsView.positionViewAtBeginning();
         keyHandler.forceActiveFocus();
         menu.animateIn();
     }
@@ -53,8 +56,8 @@ LoafPopup {
 
     // ---- width measurement --------------------------------------------------
 
-    TextMetrics { id: tmLabel; font.pixelSize: 13 }
-    TextMetrics { id: tmShortcut; font.pixelSize: 11 }
+    TextMetrics { id: tmLabel; font.pixelSize: theme.fs(13) }
+    TextMetrics { id: tmShortcut; font.pixelSize: theme.fs(11) }
 
     function computeMeasuredWidth() {
         if (typeof tmLabel === "undefined" || !tmLabel)
@@ -92,10 +95,7 @@ LoafPopup {
 
     function animatableRows() {
         var out = [];
-        var host = menu.contentHost;
-        if (!host)
-            return out;
-        var kids = host.children;
+        var kids = rowsView.contentItem ? rowsView.contentItem.children : [];
         for (var i = 0; i < kids.length; i++) {
             var c = kids[i];
             if (c && c.visible && (typeof c.playPop === "function" || typeof c.popIn === "function"))
@@ -105,6 +105,8 @@ LoafPopup {
     }
 
     function animateIn() {
+        if (!theme.animate)
+            return;
         var list = menu.animatableRows();
         for (var i = 0; i < list.length; i++) {
             var item = list[i];
@@ -117,6 +119,8 @@ LoafPopup {
     }
 
     function animateOut() {
+        if (!theme.animate)
+            return;
         var list = menu.animatableRows();
         for (var i = 0; i < list.length; i++) {
             var item = list[i];
@@ -146,21 +150,27 @@ LoafPopup {
             menu.openSubmenuAt(index);
             return;
         }
-        if (typeof it.action === "function")
-            it.action();
-        menu.close();
+        // Close this menu and every parent first, then act: a dialog or an
+        // inline editor opened by the action must not lose focus to a menu.
+        var action = it.action;
+        menu.closeChain();
+        if (typeof action === "function")
+            action();
+    }
+
+    function closeChain() {
+        var m = menu;
+        while (m) {
+            var p = m.parentMenu;
+            m.hideSubmenuNow();
+            m.close();
+            m = p;
+        }
     }
 
     function rowWrapperFor(index) {
-        var host = menu.contentHost;
-        if (!host)
-            return null;
-        var kids = host.children;
-        for (var i = 0; i < kids.length; i++) {
-            if (kids[i] && kids[i].rowIndex === index)
-                return kids[i];
-        }
-        return null;
+        rowsView.positionViewAtIndex(index, ListView.Contain);
+        return rowsView.itemAtIndex(index);
     }
 
     // ---- cascading submenus -------------------------------------------------
@@ -185,6 +195,7 @@ LoafPopup {
             return null;
         obj.menuMinWidth = menu.menuMinWidth;
         obj.menuMaxWidth = menu.menuMaxWidth;
+        obj.maxMenuHeight = menu.maxMenuHeight;
         obj.parentMenu = menu;
         if (parentItem)
             obj.parent = parentItem;
@@ -245,6 +256,7 @@ LoafPopup {
             var it = opts[i];
             if (it && it.enabled !== false) {
                 menu.highlightIndex = i;
+                rowsView.positionViewAtIndex(i, ListView.Contain);
                 return;
             }
         }
@@ -282,15 +294,24 @@ LoafPopup {
 
     // ---- rows ---------------------------------------------------------------
 
-    Repeater {
-        id: rowsRepeater
+    // Rows live in a ListView: only visible rows are created (an app list
+    // can hold hundreds of entries) and it scrolls past maxMenuHeight.
+    ListView {
+        id: rowsView
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.min(contentHeight, menu.maxMenuHeight)
+        visible: menu.modelVisible && count > 0
+        implicitHeight: Math.min(contentHeight, menu.maxMenuHeight)
+        clip: contentHeight > height
+        interactive: contentHeight > height
+        boundsBehavior: Flickable.StopAtBounds
         model: menu.model
+        ScrollBar.vertical: ScrollBar { policy: rowsView.contentHeight > rowsView.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff }
 
         delegate: ColumnLayout {
             id: rowWrap
-            Layout.fillWidth: true
+            width: rowsView.width
             spacing: 0
-            visible: menu.modelVisible
 
             property var entry: modelData
             property int rowIndex: index
@@ -333,6 +354,7 @@ LoafPopup {
             LoafMenuItem {
                 id: row
                 icon: rowWrap.entry && rowWrap.entry.icon ? rowWrap.entry.icon : ""
+                iconUrl: rowWrap.entry && rowWrap.entry.iconUrl ? rowWrap.entry.iconUrl : ""
                 text: rowWrap.entry && rowWrap.entry.text ? rowWrap.entry.text : ""
                 shortcut: rowWrap.entry && rowWrap.entry.shortcut ? rowWrap.entry.shortcut : ""
                 danger: rowWrap.entry ? rowWrap.entry.danger === true : false
@@ -364,17 +386,17 @@ LoafPopup {
         implicitHeight: 0
         focus: true
 
-        Keys.onDownPressed: { menu.moveHighlight(1); event.accepted = true; }
-        Keys.onUpPressed: { menu.moveHighlight(-1); event.accepted = true; }
-        Keys.onReturnPressed: { menu.activateHighlight(); event.accepted = true; }
-        Keys.onEnterPressed: { menu.activateHighlight(); event.accepted = true; }
-        Keys.onRightPressed: { menu.openHighlightSubmenu(); event.accepted = true; }
-        Keys.onLeftPressed: {
+        Keys.onDownPressed: function(event) { menu.moveHighlight(1); event.accepted = true; }
+        Keys.onUpPressed: function(event) { menu.moveHighlight(-1); event.accepted = true; }
+        Keys.onReturnPressed: function(event) { menu.activateHighlight(); event.accepted = true; }
+        Keys.onEnterPressed: function(event) { menu.activateHighlight(); event.accepted = true; }
+        Keys.onRightPressed: function(event) { menu.openHighlightSubmenu(); event.accepted = true; }
+        Keys.onLeftPressed: function(event) {
             if (menu.isNestedMenu())
                 menu.close();
             event.accepted = true;
         }
-        Keys.onEscapePressed: { menu.handleEscape(); event.accepted = true; }
+        Keys.onEscapePressed: function(event) { menu.handleEscape(); event.accepted = true; }
     }
 
     Timer {

@@ -80,7 +80,7 @@ Item {
     }
 
     opacity: root.isMounted ? 1.0 : 0.8
-    Behavior on opacity { NumberAnimation { duration: 140 } }
+    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 140 } }
 
     // ---- surfaces -----------------------------------------------------------
 
@@ -90,7 +90,7 @@ Item {
         radius: theme.radiusL
         color: theme.surfaceContainerLow
 
-        Behavior on color { ColorAnimation { duration: theme.durationFast } }
+        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
     }
 
     Rectangle {
@@ -99,7 +99,7 @@ Item {
         radius: theme.radiusL
         color: cardMouse.containsMouse ? theme.hoverOverlay : "transparent"
 
-        Behavior on color { ColorAnimation { duration: 100 } }
+        Behavior on color { enabled: theme.animate; ColorAnimation { duration: 100 } }
     }
 
     // Dashed outline for unmounted drives.
@@ -151,7 +151,7 @@ Item {
             Text {
                 text: (root.drive && root.drive.name) ? root.drive.name : ""
                 color: theme.textMain
-                font.pixelSize: 14
+                font.pixelSize: theme.fs(14)
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -160,7 +160,7 @@ Item {
             Text {
                 text: root.secondaryText()
                 color: theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: theme.fs(12)
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -179,7 +179,7 @@ Item {
             Text {
                 text: root.formatBytes(root.usedBytes) + " used of " + root.formatBytes(root.totalBytes)
                 color: theme.textMuted
-                font.pixelSize: 11
+                font.pixelSize: theme.fs(11)
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
                 Layout.fillWidth: true
@@ -210,7 +210,7 @@ Item {
             Text {
                 text: (root.drive && root.drive.name) ? root.drive.name : ""
                 color: theme.textMain
-                font.pixelSize: 14
+                font.pixelSize: theme.fs(14)
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -219,7 +219,7 @@ Item {
             Text {
                 text: (root.drive && root.drive.device) ? root.drive.device : ""
                 color: theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: theme.fs(12)
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
@@ -252,7 +252,7 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
-        text: "Mount"
+        text: qsTr("Mount")
         variant: "tonal"
         icon: "download-simple"
         onClicked: root.mountRequested()

@@ -7,12 +7,12 @@ Icon=loaf
 Terminal=false
 Type=Application
 StartupNotify=true
-Categories=Utility;FileManager;Core;
+Categories=System;FileTools;FileManager;Core;
 MimeType=inode/directory;
 Keywords=files;folders;explorer;browser;manager;loaf;
 Actions=NewWindow;
 
 [Desktop Action NewWindow]
 Name=New Window
-Exec=loaf
+Exec=loaf --new-window
 Icon=loaf

@@ -21,7 +21,7 @@ Rectangle {
     implicitHeight: inner.implicitHeight + 2 * padding
     implicitWidth: inner.implicitWidth + 2 * padding
 
-    Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+    Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
     Rectangle {
         id: hoverLayer
@@ -30,7 +30,7 @@ Rectangle {
         color: cardMouse.containsMouse ? theme.menuItemHover : "transparent"
         visible: root.interactive
 
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: theme.animate; ColorAnimation { duration: 120 } }
     }
 
     ColumnLayout {

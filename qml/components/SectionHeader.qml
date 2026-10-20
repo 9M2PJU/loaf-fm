@@ -36,7 +36,7 @@ Item {
             Text {
                 text: root.title
                 color: theme.textMain
-                font.pixelSize: 20
+                font.pixelSize: theme.fs(20)
                 font.bold: true
                 elide: Text.ElideRight
                 Layout.fillWidth: true
@@ -46,7 +46,7 @@ Item {
                 visible: root.subtitle.length > 0
                 text: root.subtitle
                 color: theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: theme.fs(12)
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }

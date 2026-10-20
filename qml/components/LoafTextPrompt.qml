@@ -10,7 +10,7 @@ LoafDialog {
     property string label: ""
     property string initialText: ""
     property string placeholder: ""
-    property string confirmText: "Save"
+    property string confirmText: qsTr("Save")
     property bool selectBasename: false
 
     signal accepted(string text)
@@ -44,7 +44,7 @@ LoafDialog {
         visible: prompt.label.length > 0
         text: prompt.label
         color: theme.textMuted
-        font.pixelSize: 12
+        font.pixelSize: theme.fs(12)
         elide: Text.ElideRight
         Layout.fillWidth: true
     }
@@ -55,7 +55,7 @@ LoafDialog {
         placeholderText: prompt.placeholder
         color: theme.textMain
         placeholderTextColor: theme.textMuted
-        font.pixelSize: 14
+        font.pixelSize: theme.fs(14)
         selectByMouse: true
         leftPadding: 12
         rightPadding: 12
@@ -68,7 +68,7 @@ LoafDialog {
             border.width: field.activeFocus ? 2 : 1
             border.color: field.activeFocus ? theme.primary : theme.borderSubtle
 
-            Behavior on border.color { ColorAnimation { duration: 120 } }
+            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: 120 } }
         }
 
         onAccepted: prompt.accept()
@@ -86,7 +86,7 @@ LoafDialog {
         Item { Layout.fillWidth: true }
 
         LoafButton {
-            text: "Cancel"
+            text: qsTr("Cancel")
             variant: "text"
             onClicked: prompt.cancel()
         }

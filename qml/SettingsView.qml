@@ -36,9 +36,17 @@ Item {
     readonly property bool card10Match: matchesQuery("experimental icon styles adwaita advanced archives compress cpio tar formats")
     readonly property bool card11Match: matchesQuery("about loaf version musa orbitos author credits")
     readonly property bool card12Match: matchesQuery("experimental pc customization dashboard layout sections this pc")
+    readonly property bool card13Match: matchesQuery("performance low power mode battery old slow computer animations effects gpu")
+    readonly property bool card14Match: matchesQuery("reduce motion animations accessibility")
+    readonly property bool card15Match: matchesQuery("text size font scale accessibility larger")
+    readonly property bool card16Match: matchesQuery("restore session tabs remember last folder window startup")
+    readonly property bool card17Match: matchesQuery("click rename inline single click")
+    readonly property bool card18Match: matchesQuery("search file contents text inside")
 
     readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card3Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
+        + (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
+        + (card16Match ? 1 : 0) + (card17Match ? 1 : 0) + (card18Match ? 1 : 0)
     readonly property int experimentalMatches: (card10Match ? 1 : 0) + (card12Match ? 1 : 0)
     readonly property int aboutMatches: (card11Match ? 1 : 0)
     readonly property int totalMatches: interfaceMatches + behaviorMatches + experimentalMatches + aboutMatches
@@ -70,7 +78,7 @@ Item {
             radius: theme.radiusL
             color: theme.surfaceContainer
 
-            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
             ColumnLayout {
                 anchors.fill: parent
@@ -79,9 +87,9 @@ Item {
 
                 // Section Label
                 Text {
-                    text: "SETTINGS"
+                    text: qsTr("SETTINGS")
                     color: theme.textMuted
-                    font.pixelSize: 10
+                    font.pixelSize: theme.fs(10)
                     font.bold: true
                     font.letterSpacing: 1.2
                     Layout.margins: 6
@@ -105,8 +113,8 @@ Item {
                         color: theme.primaryContainer
                         y: Math.max(0, Math.min(settingsView.activeTab, tabNavRepeater.count - 1)) * (tabNavList.rowHeight + tabNavList.rowGap)
 
-                        Behavior on y { NumberAnimation { duration: theme.durationNormal; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                        Behavior on y { enabled: theme.animate; NumberAnimation { duration: theme.durationNormal; easing.type: Easing.OutCubic } }
+                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                     }
 
                     Repeater {
@@ -131,7 +139,7 @@ Item {
                                 radius: theme.radiusFull
                                 color: (isHovered && !isCurrent) ? theme.surfaceContainerHigh : "transparent"
 
-                                Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -143,16 +151,16 @@ Item {
                                         name: modelData.iconName
                                         size: 18
                                         color: isCurrent ? theme.primaryContainerFg : (isHovered ? theme.textMain : theme.textMuted)
-                                        Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                     }
 
                                     Text {
                                         text: modelData.name
                                         color: isCurrent ? theme.primaryContainerFg : (isHovered ? theme.textMain : theme.textMuted)
-                                        font.pixelSize: 13
+                                        font.pixelSize: theme.fs(13)
                                         font.bold: isCurrent
                                         Layout.fillWidth: true
-                                        Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                     }
                                 }
                             }
@@ -183,7 +191,7 @@ Item {
             color: theme.surfaceContainerLow
             clip: true
 
-            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
             ScrollView {
                 id: contentScroll
@@ -203,7 +211,7 @@ Item {
                             ? "Settings"
                             : (settingsView.activeTab === 0 ? "Interface" : (settingsView.activeTab === 1 ? "Behavior" : (settingsView.activeTab === 2 ? "Experimental" : "About Loaf")))
                         color: theme.textMain
-                        font.pixelSize: 26
+                        font.pixelSize: theme.fs(26)
                         font.bold: true
                         font.letterSpacing: -0.5
                     }
@@ -216,9 +224,9 @@ Item {
 
                         LoafIcon { name: "magnifying-glass"; size: 16; color: theme.primary }
                         Text {
-                            text: "Settings search results"
+                            text: qsTr("Settings search results")
                             color: theme.textMain
-                            font.pixelSize: 16
+                            font.pixelSize: theme.fs(16)
                             font.bold: true
                         }
                         Rectangle {
@@ -232,7 +240,7 @@ Item {
                                 anchors.centerIn: parent
                                 text: settingsView.totalMatches + " found"
                                 color: theme.primaryContainerFg
-                                font.pixelSize: 11
+                                font.pixelSize: theme.fs(11)
                                 font.bold: true
                             }
                         }
@@ -257,7 +265,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "No settings found matching \"" + settingsView.searchQuery + "\""
                             color: theme.textMuted
-                            font.pixelSize: 14
+                            font.pixelSize: theme.fs(14)
                             font.bold: true
                         }
                     }
@@ -281,8 +289,8 @@ Item {
                         opacity: shown ? 1.0 : 0.0
                         enabled: shown
 
-                        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                        Behavior on slideOffset { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabInterface.slideOffset }
 
                         // 1. Theme (Auto, Light, Dark)
@@ -292,7 +300,7 @@ Item {
                             implicitHeight: schemeRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: schemeRow
@@ -302,8 +310,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Theme"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Light, dark, or system appearance"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Theme"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Light, dark, or system appearance"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -322,18 +330,18 @@ Item {
                                             border.color: theme.themeMode === "auto" ? theme.primary : theme.outlineVariant
                                             scale: autoMouse.pressed ? 0.94 : (autoMouse.containsMouse ? 1.04 : 1.0)
 
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: "Auto"
+                                                text: qsTr("Auto")
                                                 color: theme.themeMode === "auto" ? theme.primaryContainerFg : theme.textMain
-                                                font.pixelSize: 12
+                                                font.pixelSize: theme.fs(12)
                                                 font.bold: true
-                                                Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                             }
                                         }
                                         MouseArea {
@@ -356,18 +364,18 @@ Item {
                                             border.color: theme.themeMode === "light" ? theme.primary : theme.outlineVariant
                                             scale: lightMouse.pressed ? 0.94 : (lightMouse.containsMouse ? 1.04 : 1.0)
 
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: "Light"
+                                                text: qsTr("Light")
                                                 color: theme.themeMode === "light" ? theme.primaryContainerFg : theme.textMain
-                                                font.pixelSize: 12
+                                                font.pixelSize: theme.fs(12)
                                                 font.bold: true
-                                                Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                             }
                                         }
                                         MouseArea {
@@ -390,18 +398,18 @@ Item {
                                             border.color: theme.themeMode === "dark" ? theme.primary : theme.outlineVariant
                                             scale: darkMouse.pressed ? 0.94 : (darkMouse.containsMouse ? 1.04 : 1.0)
 
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: "Dark"
+                                                text: qsTr("Dark")
                                                 color: theme.themeMode === "dark" ? theme.primaryContainerFg : theme.textMain
-                                                font.pixelSize: 12
+                                                font.pixelSize: theme.fs(12)
                                                 font.bold: true
-                                                Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                             }
                                         }
                                         MouseArea {
@@ -423,7 +431,7 @@ Item {
                             implicitHeight: palContentCol.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             ColumnLayout {
                                 id: palContentCol
@@ -433,8 +441,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 2
-                                    Text { text: "Color palette"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Wallpaper extraction & community color schemes"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Color palette"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Wallpaper extraction & community color schemes"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 Flow {
@@ -443,14 +451,14 @@ Item {
 
                                     Repeater {
                                         model: [
-                                            { id: "wallpaper", label: "Wallpaper" },
-                                            { id: "lavender", label: "Loaf Violet" },
-                                            { id: "amber", label: "Loaf Amber" },
-                                            { id: "catppuccin", label: "Catppuccin" },
-                                            { id: "nord", label: "Nord" },
-                                            { id: "tokyonight", label: "Tokyo Night" },
-                                            { id: "gruvbox", label: "Gruvbox" },
-                                            { id: "rosepine", label: "Rosé Pine" }
+                                            { id: "wallpaper", label: qsTr("Wallpaper") },
+                                            { id: "lavender", label: qsTr("Loaf Violet") },
+                                            { id: "amber", label: qsTr("Loaf Amber") },
+                                            { id: "catppuccin", label: qsTr("Catppuccin") },
+                                            { id: "nord", label: qsTr("Nord") },
+                                            { id: "tokyonight", label: qsTr("Tokyo Night") },
+                                            { id: "gruvbox", label: qsTr("Gruvbox") },
+                                            { id: "rosepine", label: qsTr("Rosé Pine") }
                                         ]
 
                                         delegate: Item {
@@ -467,10 +475,10 @@ Item {
 
                                                 scale: palMouse.pressed ? 0.94 : (palMouse.containsMouse ? 1.04 : 1.0)
 
-                                                Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                                Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                                Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                                Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                                Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                                Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                                 RowLayout {
                                                     anchors.centerIn: parent
@@ -483,9 +491,9 @@ Item {
                                                     Text {
                                                         text: modelData.label
                                                         color: theme.accentName === modelData.id ? theme.primaryContainerFg : theme.textMain
-                                                        font.pixelSize: 11
+                                                        font.pixelSize: theme.fs(11)
                                                         font.bold: theme.accentName === modelData.id
-                                                        Behavior on color { ColorAnimation { duration: theme.durationFast } }
+                                                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                                                     }
                                                 }
                                             }
@@ -510,7 +518,7 @@ Item {
                             implicitHeight: brandRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: brandRow
@@ -520,8 +528,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Top-Left Loaf Badge"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Show the bread icon brand badge in the top bar"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Top-Left Loaf Badge"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Show the bread icon brand badge in the top bar"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -547,7 +555,7 @@ Item {
                             implicitHeight: iconSrcRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: iconSrcRow
@@ -557,8 +565,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Icon style"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Phosphor, system theme, or GNOME Adwaita"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Icon style"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Phosphor, system theme, or GNOME Adwaita"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -573,10 +581,10 @@ Item {
                                             color: theme.iconSource === "phosphor" ? theme.primaryContainer : theme.surfaceContainerHigh
                                             border.width: theme.iconSource === "phosphor" ? 2 : 1
                                             border.color: theme.iconSource === "phosphor" ? theme.primary : theme.outlineVariant
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Text { anchors.centerIn: parent; text: "Phosphor"; color: theme.iconSource === "phosphor" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: 11; font.bold: true; Behavior on color { ColorAnimation { duration: theme.durationFast } } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Text { anchors.centerIn: parent; text: qsTr("Phosphor"); color: theme.iconSource === "phosphor" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true; Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } } }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.iconSource = "phosphor" }
                                     }
@@ -588,10 +596,10 @@ Item {
                                             color: theme.iconSource === "system" ? theme.primaryContainer : theme.surfaceContainerHigh
                                             border.width: theme.iconSource === "system" ? 2 : 1
                                             border.color: theme.iconSource === "system" ? theme.primary : theme.outlineVariant
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Text { anchors.centerIn: parent; text: "System"; color: theme.iconSource === "system" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: 11; font.bold: true; Behavior on color { ColorAnimation { duration: theme.durationFast } } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Text { anchors.centerIn: parent; text: qsTr("System"); color: theme.iconSource === "system" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true; Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } } }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.iconSource = "system" }
                                     }
@@ -603,10 +611,10 @@ Item {
                                             color: theme.iconSource === "adwaita" ? theme.primaryContainer : theme.surfaceContainerHigh
                                             border.width: theme.iconSource === "adwaita" ? 2 : 1
                                             border.color: theme.iconSource === "adwaita" ? theme.primary : theme.outlineVariant
-                                            Behavior on color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.color { ColorAnimation { duration: theme.durationFast } }
-                                            Behavior on border.width { NumberAnimation { duration: theme.durationFast } }
-                                            Text { anchors.centerIn: parent; text: "Adwaita"; color: theme.iconSource === "adwaita" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: 11; font.bold: true; Behavior on color { ColorAnimation { duration: theme.durationFast } } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Text { anchors.centerIn: parent; text: qsTr("Adwaita"); color: theme.iconSource === "adwaita" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true; Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } } }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.iconSource = "adwaita" }
                                     }
@@ -621,7 +629,7 @@ Item {
                             implicitHeight: weightCol.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             ColumnLayout {
                                 id: weightCol
@@ -631,8 +639,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Phosphor icon weight"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Thin, light, regular, bold, fill, or duotone"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Phosphor icon weight"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Thin, light, regular, bold, fill, or duotone"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 Flow {
@@ -641,12 +649,12 @@ Item {
 
                                     Repeater {
                                         model: [
-                                            { id: "thin", label: "Thin" },
-                                            { id: "light", label: "Light" },
-                                            { id: "regular", label: "Regular" },
-                                            { id: "bold", label: "Bold" },
-                                            { id: "fill", label: "Fill" },
-                                            { id: "duotone", label: "Duotone" }
+                                            { id: "thin", label: qsTr("Thin") },
+                                            { id: "light", label: qsTr("Light") },
+                                            { id: "regular", label: qsTr("Regular") },
+                                            { id: "bold", label: qsTr("Bold") },
+                                            { id: "fill", label: qsTr("Fill") },
+                                            { id: "duotone", label: qsTr("Duotone") }
                                         ]
 
                                         delegate: Item {
@@ -659,13 +667,13 @@ Item {
                                                 border.width: theme.phosphorWeight === modelData.id ? 2 : 0
 
                                                 scale: wMouse.pressed ? 0.94 : (wMouse.containsMouse ? 1.04 : 1.0)
-                                                Behavior on scale { SpringAnimation { spring: 3.5; damping: 0.3 } }
+                                                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                                                 Text {
                                                     anchors.centerIn: parent
                                                     text: modelData.label
                                                     color: theme.phosphorWeight === modelData.id ? theme.primaryContainerFg : theme.textMain
-                                                    font.pixelSize: 11
+                                                    font.pixelSize: theme.fs(11)
                                                     font.bold: theme.phosphorWeight === modelData.id
                                                 }
                                             }
@@ -681,7 +689,44 @@ Item {
                                 }
                             }
                         }
+                        // Performance: low-power mode
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card13Match
+                            title: qsTr("Low-power mode")
+                            subtitle: (theme.softwareRendering || core.low_end_hardware)
+                                ? qsTr("This computer looks low-end (no GPU acceleration, little memory or few cores), so Auto keeps it on. Disables animations, thumbnail masks and background effects.")
+                                : qsTr("Disables animations, thumbnail masks and background effects for older or battery-powered machines")
+                            LoafSegmented {
+                                Layout.preferredWidth: 220
+                                options: [{ value: "auto", label: qsTr("Auto") }, { value: "on", label: qsTr("On") }, { value: "off", label: qsTr("Off") }]
+                                value: theme.lowPowerSetting
+                                onSelected: function(v) { theme.lowPowerSetting = v; }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card14Match
+                            title: qsTr("Reduce motion")
+                            subtitle: qsTr("Turn off springs, fades and slide transitions")
+                            LoafSwitch {
+                                checked: theme.reduceMotionSetting
+                                onToggled: function(c) { theme.reduceMotionSetting = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card15Match
+                            title: qsTr("Text size")
+                            subtitle: qsTr("Scales all text; also follows the desktop font size")
+                            LoafSegmented {
+                                Layout.preferredWidth: 260
+                                options: [{ value: 0.9, label: "90%" }, { value: 1.0, label: "100%" }, { value: 1.15, label: "115%" }, { value: 1.3, label: "130%" }]
+                                value: theme.fontScaleSetting
+                                onSelected: function(v) { theme.fontScaleSetting = v; }
+                            }
+                        }
                     }
+
 
                     // ==========================================
                     // TAB 1: BEHAVIOR
@@ -702,8 +747,8 @@ Item {
                         opacity: shown ? 1.0 : 0.0
                         enabled: shown
 
-                        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                        Behavior on slideOffset { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabBehavior.slideOffset }
 
                         // Left-Click Drag Action
@@ -713,7 +758,7 @@ Item {
                             implicitHeight: dragActionRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: dragActionRow
@@ -723,8 +768,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Left-click drag action"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Choose whether dragging selects items or pans the view"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Left-click drag action"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Choose whether dragging selects items or pans the view"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -739,7 +784,7 @@ Item {
                                             color: theme.dragAction === "select" ? theme.primaryContainer : theme.surfaceContainerHigh
                                             border.color: theme.primary
                                             border.width: theme.dragAction === "select" ? 2 : 0
-                                            Text { anchors.centerIn: parent; text: "Selection Box"; color: theme.dragAction === "select" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: 11; font.bold: true }
+                                            Text { anchors.centerIn: parent; text: qsTr("Selection Box"); color: theme.dragAction === "select" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.dragAction = "select" }
                                     }
@@ -751,7 +796,7 @@ Item {
                                             color: theme.dragAction === "scroll" ? theme.primaryContainer : theme.surfaceContainerHigh
                                             border.color: theme.primary
                                             border.width: theme.dragAction === "scroll" ? 2 : 0
-                                            Text { anchors.centerIn: parent; text: "Pan View"; color: theme.dragAction === "scroll" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: 11; font.bold: true }
+                                            Text { anchors.centerIn: parent; text: qsTr("Pan View"); color: theme.dragAction === "scroll" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.dragAction = "scroll" }
                                     }
@@ -766,7 +811,7 @@ Item {
                             implicitHeight: thumbRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: thumbRow
@@ -776,8 +821,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Picture Thumbnails"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Show preview thumbnails for pictures, SVGs, and creative files"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Picture Thumbnails"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Show preview thumbnails for pictures, SVGs, and creative files"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -803,7 +848,7 @@ Item {
                             implicitHeight: hiddenRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: hiddenRow
@@ -813,8 +858,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Show Hidden Files"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Display files and folders starting with a dot"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Show Hidden Files"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Display files and folders starting with a dot"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -840,7 +885,7 @@ Item {
                             implicitHeight: disambigRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: disambigRow
@@ -850,26 +895,50 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Disambiguate duplicate names"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Show parent folder prefix for duplicate search results"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Disambiguate duplicate names"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Show parent folder prefix for duplicate search results"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
                                     id: disambigSwitch
-                                    checked: engine.disambiguate_duplicates
-                                    onToggled: if (engine.disambiguate_duplicates !== checked) engine.toggle_disambiguate_duplicates()
+                                    checked: core.get_setting("disambiguate_duplicates") !== "false"
+                                    onToggled: core.set_setting("disambiguate_duplicates", checked ? "true" : "false")
                                 }
                             }
 
-                            Connections {
-                                target: engine
-                                function onDisambiguate_duplicatesChanged() {
-                                    if (disambigSwitch.checked !== engine.disambiguate_duplicates)
-                                        disambigSwitch.checked = engine.disambiguate_duplicates
-                                }
+
+                        }
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card16Match
+                            title: qsTr("Restore last session")
+                            subtitle: qsTr("Reopen your tabs, folders and window size on start")
+                            LoafSwitch {
+                                checked: core.get_setting("restoreSession") !== "false"
+                                onToggled: function(c) { core.set_setting("restoreSession", c ? "true" : "false"); }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card17Match
+                            title: qsTr("Click selected name to rename")
+                            subtitle: qsTr("A second single click on a selected item's name starts renaming (F2 always works)")
+                            LoafSwitch {
+                                checked: theme.clickToRename
+                                onToggled: function(c) { theme.clickToRename = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.card18Match
+                            title: qsTr("Search inside files")
+                            subtitle: qsTr("Subfolder / everywhere searches also match text inside files (slower)")
+                            LoafSwitch {
+                                checked: theme.searchContents
+                                onToggled: function(c) { theme.searchContents = c; }
                             }
                         }
                     }
+
 
                     // ==========================================
                     // TAB 2: EXPERIMENTAL
@@ -890,8 +959,8 @@ Item {
                         opacity: shown ? 1.0 : 0.0
                         enabled: shown
 
-                        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                        Behavior on slideOffset { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabExperimental.slideOffset }
 
                         // More Icon Styles (System & Adwaita)
@@ -900,7 +969,7 @@ Item {
                             implicitHeight: expIconRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: expIconRow
@@ -910,8 +979,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "More icon styles"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Enable System desktop theme and GNOME Adwaita vector icons"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("More icon styles"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Enable System desktop theme and GNOME Adwaita vector icons"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -936,7 +1005,7 @@ Item {
                             implicitHeight: expArchRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: expArchRow
@@ -946,8 +1015,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "Advanced Archive Formats"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Enable obscure archive formats (.7z, .tar.bz2, .tar.xz, .tar.zst, .cpio) in Compress menu"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("Advanced Archive Formats"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Enable obscure archive formats (.7z, .tar.bz2, .tar.xz, .tar.zst, .cpio) in Compress menu"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -973,7 +1042,7 @@ Item {
                             implicitHeight: pcCustomRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: pcCustomRow
@@ -983,8 +1052,8 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: "PC customization"; color: theme.textMain; font.pixelSize: 14; font.bold: true }
-                                    Text { text: "Allow reordering and hiding sections on the This PC dashboard"; color: theme.textMuted; font.pixelSize: 11 }
+                                    Text { text: qsTr("PC customization"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                    Text { text: qsTr("Allow reordering and hiding sections on the This PC dashboard"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
                                 }
 
                                 LoafSwitch {
@@ -1027,8 +1096,8 @@ Item {
                         opacity: shown ? 1.0 : 0.0
                         enabled: shown
 
-                        Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
-                        Behavior on slideOffset { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabAbout.slideOffset }
 
                         Rectangle {
@@ -1036,7 +1105,7 @@ Item {
                             implicitHeight: aboutRow.implicitHeight + 36
                             radius: theme.radiusL
                             color: theme.surfaceContainer
-                            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
                             RowLayout {
                                 id: aboutRow
@@ -1052,19 +1121,19 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 4
-                                    Text { text: "Loaf v0.1.0"; color: theme.textMain; font.pixelSize: 16; font.bold: true }
-                                    Text { text: "A beatiful and fast rust-based materal 3e file manager for linux."; color: theme.textMuted; font.pixelSize: 12 }
+                                    Text { text: qsTr("Loaf v") + Qt.application.version; color: theme.textMain; font.pixelSize: theme.fs(16); font.bold: true }
+                                    Text { text: qsTr("A beautiful and fast Rust-based Material 3 Expressive file manager for Linux."); color: theme.textMuted; font.pixelSize: theme.fs(12) }
                                     RowLayout {
                                         spacing: 6
                                         LoafIcon { name: "github-logo"; size: 14; color: theme.primary }
                                         Text {
                                             id: ghLink
-                                            text: "github.com/m-uvex/loaf-fm  ·  by @m_uvex"
+                                            text: qsTr("github.com/m-uvex/loaf-fm  ·  by @m_uvex")
                                             color: ghMouse.containsMouse ? theme.primary : theme.outline
-                                            font.pixelSize: 11
+                                            font.pixelSize: theme.fs(11)
                                             font.underline: ghMouse.containsMouse
 
-                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: 120 } }
 
                                             MouseArea {
                                                 id: ghMouse
@@ -1081,6 +1150,38 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // Settings row: title + subtitle on the left, a control on the right.
+    component SettingCard: Rectangle {
+        id: card
+        property string title: ""
+        property string subtitle: ""
+        default property alias control: controlSlot.data
+        Layout.fillWidth: true
+        implicitHeight: cardRow.implicitHeight + 32
+        radius: theme.radiusL
+        color: theme.surfaceContainer
+
+        RowLayout {
+            id: cardRow
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 14
+            ColumnLayout {
+                spacing: 3
+                Layout.fillWidth: true
+                Text { text: card.title; color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                Text {
+                    text: card.subtitle
+                    color: theme.textMuted
+                    font.pixelSize: theme.fs(11)
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
+            }
+            RowLayout { id: controlSlot }
         }
     }
 }

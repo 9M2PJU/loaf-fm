@@ -60,8 +60,8 @@ Popup {
             border.color: popup.borderColor
             border.width: 1
 
-            Behavior on color { ColorAnimation { duration: theme.durationNormal } }
-            Behavior on border.color { ColorAnimation { duration: theme.durationNormal } }
+            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
+            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
         }
     }
 
