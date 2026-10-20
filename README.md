@@ -63,14 +63,23 @@ curl -sSL https://raw.githubusercontent.com/m-uvex/loaf-fm/main/install.sh | sh
 
 ## Alternative Manual Installation Methods
 
-Pre-built packages and package managers are available for manual installation (See release page for pre-built packages):
+Pre-built packages are available for manual installation (See release page for packages):
 
-### 1. Debian / Ubuntu / Linux Mint / Pop!_OS (`.deb`)
+### 1. Standalone AppImage (Universal)
+
+Download the self-contained `.AppImage` and run it directly:
+
+```bash
+chmod +x Loaf-v0.1.0-x86_64.AppImage
+./Loaf-v0.1.0-x86_64.AppImage
+```
+
+### 2. Debian and Debian-based (Ubuntu, Mint, etc.) (`.deb`)
 
 Download the `.deb` package and install it using `apt` or `dpkg`:
 
 ```bash
-# Using apt (automatically resolves dependencies):
+# Using apt (Recommended):
 sudo apt install ./loaf_0.1.0_amd64.deb
 
 # Or using dpkg:
@@ -78,9 +87,9 @@ sudo dpkg -i ./loaf_0.1.0_amd64.deb
 sudo apt-get install -f
 ```
 
-### 2. Arch Linux / Manjaro / EndeavourOS (`.pkg.tar.zst`)
+### 3. Arch and Arch-based (Manjaro, CachyOS, etc.) (`.pkg.tar.zst`)
 
-Install the binary package with `pacman`:
+Download the `.pkg.tar.zst` package and install it using `pacman`:
 
 ```bash
 sudo pacman -U ./loaf-0.1.0-1-x86_64.pkg.tar.zst
@@ -92,21 +101,12 @@ Or build from the included `PKGBUILD`:
 makepkg -si
 ```
 
-### 3. Fedora / RHEL / openSUSE (`.rpm`)
+### 4. Fedora / RHEL / openSUSE (`.rpm`)
 
-Install the RPM with `dnf`:
+Download the `.rpm` package and install it using `dnf`:
 
 ```bash
 sudo dnf install ./loaf-0.1.0-1.fc44.x86_64.rpm
-```
-
-### 4. Standalone AppImage (Universal)
-
-Run the self-contained executable directly:
-
-```bash
-chmod +x Loaf-v0.1.0-x86_64.AppImage
-./Loaf-v0.1.0-x86_64.AppImage
 ```
 
 ### 5. Using Nix / NixOS
@@ -117,6 +117,31 @@ Run directly with flakes enabled:
 nix run github:m-uvex/loaf-fm
 ```
 
+### 5. Using Nix / NixOS
+
+Run directly with flakes enabled:
+
+```bash
+nix run github:m-uvex/loaf-fm
+```
+
+For a declarative installation, add to your `flake.nix`:
+
+```nix
+loaf.url = "github:m-uvex/loaf-fm";
+```
+And add to your `configuration.nix`:
+```nix
+{ inputs, pkgs, ...}:
+
+{
+    nixpkgs.overlays = [ loaf.overlays.default ];
+
+    environment.systemPackages = [ pkgs.loaf ];
+}
+```
+> [!NOTE]
+> We do not support `home-manager` currently
 ---
 
 ## Building from Source
