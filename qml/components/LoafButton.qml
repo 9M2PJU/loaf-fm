@@ -11,7 +11,8 @@ Item {
     property string icon: ""
     property string variant: "text"
     property bool checked: false
-    property alias accessibleName: root.Accessible.name
+    property string accessibleName: ""
+    Accessible.name: accessibleName.length > 0 ? accessibleName : (text.length > 0 ? text : icon)
 
     signal clicked()
 

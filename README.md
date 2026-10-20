@@ -53,7 +53,17 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 
 ## Installation
 
-Pre-built packages for **v0.1.0** are available in the [Releases](https://github.com/m-uvex/loaf-fm/releases) tab and under `packaging/dist/`.
+The easiest way to install Loaf is through our interactive management script:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/m-uvex/loaf-fm/main/install.sh | sh
+```
+
+---
+
+## Alternative Manual Installation Methods
+
+Pre-built packages and package managers are available for manual installation (See release page for pre-built packages):
 
 ### 1. Debian / Ubuntu / Linux Mint / Pop!_OS (`.deb`)
 
@@ -84,81 +94,27 @@ makepkg -si
 
 ### 3. Fedora / RHEL / openSUSE (`.rpm`)
 
-Install the RPM with `dnf` (it pulls in Qt and suggests 7-Zip, UDisks and thumbnailers):
+Install the RPM with `dnf`:
 
 ```bash
 sudo dnf install ./loaf-0.1.0-1.fc44.x86_64.rpm
 ```
 
-Or build the RPM yourself from `packaging/rpm/loaf.spec`:
+### 4. Standalone AppImage (Universal)
 
-```bash
-git archive --prefix=loaf-0.1.0/ -o ~/rpmbuild/SOURCES/loaf-0.1.0.tar.gz HEAD
-rpmbuild -ba packaging/rpm/loaf.spec
-```
-
-### 4. Universal Portable Tarball (Any Linux Distribution)
-
-The standalone tarball contains the stripped binary, desktop integration, icons, and automated installer scripts:
-
-```bash
-# Extract the archive:
-tar -xzf loaf-v0.1.0-linux-x86_64.tar.gz
-cd loaf-0.1.0
-
-# Install for current user (into ~/.local/bin and ~/.local/share):
-./install.sh
-
-# Or install system-wide for all users:
-sudo ./install.sh --system
-```
-
-To run directly without installing:
-
-```bash
-./bin/loaf-run
-```
-
-To uninstall:
-
-```bash
-./uninstall.sh
-```
-
-### 5. Standalone AppImage (Universal)
-
-The self-contained single-file executable runs out of the box with zero dependencies:
+Run the self-contained executable directly:
 
 ```bash
 chmod +x Loaf-v0.1.0-x86_64.AppImage
 ./Loaf-v0.1.0-x86_64.AppImage
 ```
 
-Or extract the AppDir bundle:
-
-```bash
-tar -xzf loaf-v0.1.0-AppDir.tar.gz
-./Loaf.AppDir/AppRun
-```
-
-### 6. Using Nix / NixOS
+### 5. Using Nix / NixOS
 
 Run directly with flakes enabled:
 
 ```bash
 nix run github:m-uvex/loaf-fm
-```
-
-Or install to your user profile:
-
-```bash
-nix profile install github:m-uvex/loaf-fm
-```
-
-In a local clone:
-
-```bash
-nix run .#
 ```
 
 ---
