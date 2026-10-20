@@ -2365,7 +2365,7 @@ ApplicationWindow {
                     LoafButton {
                         icon: placeRow.modelData.hidden ? "eye-slash" : "eye"
                         variant: "text"
-                        accessibleName: placeRow.modelData.hidden ? qsTr("Show in sidebar") : qsTr("Hide from sidebar")
+                        Accessible.name: placeRow.modelData.hidden ? qsTr("Show in sidebar") : qsTr("Hide from sidebar")
                         onClicked: core.set_place_hidden(placeRow.modelData.id, !placeRow.modelData.hidden)
                     }
 
@@ -2374,7 +2374,7 @@ ApplicationWindow {
                         icon: "trash"
                         variant: "text"
                         enabled: placeRow.modelData.kind === "bookmark" || (placeRow.modelData.id && placeRow.modelData.id.indexOf("bookmark:") === 0)
-                        accessibleName: qsTr("Remove bookmark")
+                        Accessible.name: qsTr("Remove bookmark")
                         onClicked: {
                             if (placeRow.modelData.path)
                                 core.remove_bookmark(placeRow.modelData.path);
