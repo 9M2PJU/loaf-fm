@@ -141,7 +141,7 @@ And add to your `configuration.nix`:
 }
 ```
 > [!NOTE]
-> We do not support `home-manager` currently
+> We DO ~~not~~ support `home-manager`!
 ---
 
 ## Building from Source
@@ -287,6 +287,12 @@ loaf/
 ├── Cargo.toml               Rust package manifest
 └── flake.nix                Nix flake declaring devShell and default package
 ```
+
+---
+
+## Contributing
+
+We welcome contributions of all kinds! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on branch targets (`dev`), setting up your development environment with or without Nix, architecture overview, and testing instructions.
 
 ---
 
