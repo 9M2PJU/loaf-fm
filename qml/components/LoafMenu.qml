@@ -412,12 +412,13 @@ LoafPopup {
 
     Timer {
         id: hideTimer
-        interval: 220
+        interval: 180
         onTriggered: {
             var sm = menu.currentSubmenu;
             if (!sm || !sm.opened)
                 return;
-            if (menu.contentHovered || sm.contentHovered)
+            // Only keep the submenu open if the mouse has moved into the submenu itself.
+            if (sm.contentHovered)
                 return;
             sm.close();
         }
