@@ -6,10 +6,10 @@ import app.loaf
 Item {
     id: root
 
-    Layout.fillWidth: true
+    Layout.fillWidth: label.length > 0
     Layout.preferredHeight: 32
     implicitHeight: 32
-    implicitWidth: 180
+    implicitWidth: label.length > 0 ? 180 : 46
 
     property bool checked: false
     property string label: ""
