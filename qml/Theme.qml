@@ -28,7 +28,7 @@ Item {
     readonly property bool animate: !reduceMotionSetting && !lowPower
 
     // Icon size in the file views (Ctrl + scroll / Ctrl +/-).
-    readonly property var zoomLevels: [0.75, 0.875, 1.0, 1.25, 1.5, 2.0]
+    readonly property var zoomLevels: [0.75, 0.875, 1.0, 1.25, 1.5, 2.0, 4.0, 6.0, 8.0]
     property int zoomIndex: 2
     readonly property real zoom: zoomLevels[Math.max(0, Math.min(zoomLevels.length - 1, zoomIndex))]
     function stepZoom(dir) {
