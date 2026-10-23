@@ -246,7 +246,7 @@ Rectangle {
             // Drop a folder on the empty part of the rail to bookmark it.
             footer: Item {
                 width: placeList.width
-                height: Math.max(24, placeList.height - placeList.contentHeight + 0)
+                height: 48
                 DropArea {
                     anchors.fill: parent
                     keys: ["text/uri-list"]
@@ -279,12 +279,12 @@ Rectangle {
         Item {
             id: trashContainer
             Layout.fillWidth: true
-            visible: height > 0.01
+            Layout.preferredHeight: rail.showTrash ? 44 : 0
+            visible: Layout.preferredHeight > 0.01
             clip: true
-            height: rail.showTrash ? 44 : 0
             opacity: rail.showTrash ? 1.0 : 0.0
 
-            Behavior on height { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+            Behavior on Layout.preferredHeight { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
             Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
             RailButton {
