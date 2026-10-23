@@ -1948,6 +1948,8 @@ ApplicationWindow {
             m.push({ text: qsTr("Preview"), icon: "eye", shortcut: "Space", action: function() { quickLook.showFor(item.path); } });
             m.push({ text: qsTr("Delete Permanently"), icon: "trash", danger: true, separatorBefore: true, shortcut: "Del", action: function() { window.deleteSelection(); } });
             m.push({ text: qsTr("Properties"), icon: "info", separatorBefore: true, action: function() { window.showProperties(paths); } });
+            if (m.length === 0)
+                return;
             contextMenu.model = m;
             contextMenu.openAt(mx, my);
             return;
@@ -2037,8 +2039,12 @@ ApplicationWindow {
         var kind = e.location_kind;
         var m = [];
         if (kind === "trash") {
-            m.push({ text: qsTr("Empty Trash"), icon: "trash", danger: true, enabled: e.item_count > 0, action: function() { window.confirmEmptyTrash(); } });
-            m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", separatorBefore: true, action: function() { pane.selectAll(); } });
+            if (e.item_count > 0) {
+                m.push({ text: qsTr("Empty Trash"), icon: "trash", danger: true, itemKey: "empty_trash", action: function() { window.confirmEmptyTrash(); } });
+                m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", itemKey: "select_all", separatorBefore: true, action: function() { pane.selectAll(); } });
+            }
+            if (m.length === 0)
+                return;
             contextMenu.model = m;
             contextMenu.openAt(mx, my);
             return;
@@ -2058,15 +2064,18 @@ ApplicationWindow {
                     }
                 }) });
             }
-            m.push({ text: qsTr("New…"), icon: "plus-circle", submenu: newSub });
-            m.push({ text: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V", itemKey: "paste", enabled: native.clipboardHasFiles(), separatorBefore: true, action: function() { window.pasteInto(e.current_path); } });
+            m.push({ text: qsTr("New…"), icon: "plus-circle", itemKey: "new", submenu: newSub });
+            if (native.clipboardHasFiles())
+                m.push({ text: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V", itemKey: "paste", separatorBefore: true, action: function() { window.pasteInto(e.current_path); } });
         }
-        m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", itemKey: "select_all", separatorBefore: kind !== "dir", action: function() { pane.selectAll(); } });
-        m.push({ text: qsTr("Select by Pattern…"), icon: "selection", shortcut: "Ctrl+S", action: function() { patternModal.openFor(); } });
+        if (e.item_count > 0) {
+            m.push({ text: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A", itemKey: "select_all", separatorBefore: kind !== "dir", action: function() { pane.selectAll(); } });
+            m.push({ text: qsTr("Select by Pattern…"), icon: "selection", shortcut: "Ctrl+S", itemKey: "select_pattern", action: function() { patternModal.openFor(); } });
+        }
         if (kind === "dir") {
             m.push({ text: qsTr("Open Terminal Here"), icon: "terminal", itemKey: "terminal", separatorBefore: true, action: function() { core.open_terminal(e.current_path); } });
             var marked = core.is_bookmarked(e.current_path);
-            m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", shortcut: "Ctrl+D", action: function() {
+            m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", shortcut: "Ctrl+D", itemKey: "pin", action: function() {
                 if (marked)
                     core.remove_bookmark(e.current_path);
                 else
