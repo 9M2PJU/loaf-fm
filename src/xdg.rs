@@ -113,6 +113,44 @@ pub fn default_places() -> Vec<Place> {
             kind: "place".into(),
         });
     }
+
+    // Common non-standard places: Projects and Games (with localized folder names).
+    let project_names = [
+        "Projects", "Projekte", "Projets", "Proyectos", "Projetos", "Проекты", "Progetti", "Projeler", "Development", "Dev", "Code",
+    ];
+    for name in project_names {
+        let p = home.join(name);
+        if p.is_dir() {
+            v.push(Place {
+                id: "PROJECTS".into(),
+                name: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Projects".into()),
+                path: p.to_string_lossy().to_string(),
+                icon: "code".into(),
+                system_icon: "folder-development".into(),
+                kind: "place".into(),
+            });
+            break;
+        }
+    }
+
+    let game_names = [
+        "Games", "Spiele", "Jeux", "Juegos", "Jogos", "Игры", "Giochi", "Oyunlar",
+    ];
+    for name in game_names {
+        let p = home.join(name);
+        if p.is_dir() {
+            v.push(Place {
+                id: "GAMES".into(),
+                name: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Games".into()),
+                path: p.to_string_lossy().to_string(),
+                icon: "game-controller".into(),
+                system_icon: "applications-games".into(),
+                kind: "place".into(),
+            });
+            break;
+        }
+    }
+
     v
 }
 
