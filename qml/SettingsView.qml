@@ -74,7 +74,7 @@ Item {
         // Left Navigation Tabs
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 200
+            Layout.preferredWidth: Math.max(128, Math.min(200, parent.width * 0.40))
             radius: theme.radiusL
             color: theme.surfaceContainer
 
@@ -216,6 +216,9 @@ Item {
                         font.pixelSize: theme.fs(26)
                         font.bold: true
                         font.letterSpacing: -0.5
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                     }
 
                     // Search Results Header (when searching)
@@ -299,26 +302,29 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card1Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: schemeRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            ColumnLayout {
                                 id: schemeRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 16
+                                spacing: 12
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Theme"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Light, dark, or system appearance"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Theme"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Light, dark, or system appearance"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
-                                Item { Layout.fillWidth: true }
 
-                                RowLayout {
+                                Flow {
+                                    id: schemePills
+                                    Layout.fillWidth: true
                                     spacing: 8
 
                                     // AUTO PILL
@@ -430,6 +436,7 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card2Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: palContentCol.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
@@ -554,26 +561,29 @@ Item {
                         Rectangle {
                             visible: theme.showExperimentalIcons && (settingsView.searchQuery.length === 0 || settingsView.card4Match)
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: iconSrcRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            ColumnLayout {
                                 id: iconSrcRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 16
+                                spacing: 12
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Icon style"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Phosphor, system theme, or GNOME Adwaita"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Icon style"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Phosphor, system theme, or GNOME Adwaita"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
-                                Item { Layout.fillWidth: true }
 
-                                RowLayout {
+                                Flow {
+                                    id: iconPills
+                                    Layout.fillWidth: true
                                     spacing: 8
 
                                     Item {
@@ -628,6 +638,7 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card5Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: weightCol.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
@@ -641,8 +652,9 @@ Item {
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Phosphor icon weight"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Thin, light, regular, bold, fill, or duotone"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Phosphor icon weight"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Thin, light, regular, bold, fill, or duotone"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 Flow {
@@ -721,26 +733,29 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card6Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: dragActionRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            ColumnLayout {
                                 id: dragActionRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                spacing: 12
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Left-click drag action"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Choose whether dragging selects items or pans the view"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Left-click drag action"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Choose whether dragging selects items or pans the view"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
-                                Item { Layout.fillWidth: true }
 
-                                RowLayout {
+                                Flow {
+                                    id: dragPills
+                                    Layout.fillWidth: true
                                     spacing: 8
 
                                     Item {
@@ -774,25 +789,30 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card7Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: thumbRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: thumbRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - thumbSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Picture Thumbnails"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Show preview thumbnails for pictures, SVGs, and creative files"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Picture Thumbnails"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Show preview thumbnails for pictures, SVGs, and creative files"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: thumbSwitch
+                                    Layout.alignment: Qt.AlignRight
                                     checked: theme.showThumbnails
                                     onToggled: theme.showThumbnails = checked
                                 }
@@ -811,35 +831,40 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card8Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: hiddenRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: hiddenRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - hiddenSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Show Hidden Files"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Display files and folders starting with a dot"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Show Hidden Files"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Display files and folders starting with a dot"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: hiddenSwitch
-                                    checked: engine.show_hidden
-                                    onToggled: if (engine.show_hidden !== checked) engine.toggle_show_hidden()
+                                    Layout.alignment: Qt.AlignRight
+                                    checked: window.showHidden
+                                    onToggled: window.toggleShowHidden()
                                 }
                             }
 
                             Connections {
                                 target: engine
                                 function onShow_hiddenChanged() {
-                                    if (hiddenSwitch.checked !== engine.show_hidden)
-                                        hiddenSwitch.checked = engine.show_hidden
+                                    if (hiddenSwitch.checked !== window.showHidden)
+                                        hiddenSwitch.checked = window.showHidden
                                 }
                             }
                         }
@@ -848,25 +873,30 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card9Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: disambigRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: disambigRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - disambigSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Disambiguate duplicate names"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Show parent folder prefix for duplicate search results"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Disambiguate duplicate names"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Show parent folder prefix for duplicate search results"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: disambigSwitch
+                                    Layout.alignment: Qt.AlignRight
                                     checked: core.get_setting("disambiguate_duplicates") !== "false"
                                     onToggled: core.set_setting("disambiguate_duplicates", checked ? "true" : "false")
                                 }
@@ -1034,25 +1064,30 @@ Item {
                         // More Icon Styles (System & Adwaita)
                         Rectangle {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: expIconRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: expIconRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - expIconSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("More icon styles"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Enable System desktop theme and GNOME Adwaita vector icons"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("More icon styles"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Enable System desktop theme and GNOME Adwaita vector icons"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: expIconSwitch
+                                    Layout.alignment: Qt.AlignRight
                                     checked: theme.showExperimentalIcons
                                     onToggled: theme.showExperimentalIcons = checked
                                 }
@@ -1070,25 +1105,30 @@ Item {
                         // Advanced Archive Formats
                         Rectangle {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: expArchRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: expArchRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - expArchSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("Advanced Archive Formats"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Enable obscure archive formats (.7z, .tar.bz2, .tar.xz, .tar.zst, .cpio) in Compress menu"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Advanced Archive Formats"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Enable obscure archive formats (.7z, .tar.bz2, .tar.xz, .tar.zst, .cpio) in Compress menu"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: expArchSwitch
+                                    Layout.alignment: Qt.AlignRight
                                     checked: theme.showAdvancedArchives
                                     onToggled: theme.showAdvancedArchives = checked
                                 }
@@ -1107,25 +1147,30 @@ Item {
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card12Match
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: pcCustomRow.implicitHeight + 32
                             radius: theme.radiusL
                             color: theme.surfaceContainer
                             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
-                            RowLayout {
+                            GridLayout {
                                 id: pcCustomRow
                                 anchors.fill: parent
                                 anchors.margins: 16
-                                spacing: 14
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - pcCustomSwitch.implicitWidth) >= 170 ? 2 : 1
 
                                 ColumnLayout {
                                     spacing: 3
-                                    Text { text: qsTr("PC customization"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Allow reordering and hiding sections on the This PC dashboard"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("PC customization"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Allow reordering and hiding sections on the This PC dashboard"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
                                 LoafSwitch {
                                     id: pcCustomSwitch
+                                    Layout.alignment: Qt.AlignRight
                                     checked: theme.experimentalPcCustomization
                                     onToggled: theme.experimentalPcCustomization = checked
                                 }
@@ -1170,6 +1215,7 @@ Item {
 
                         Rectangle {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 0
                             implicitHeight: aboutRow.implicitHeight + 36
                             radius: theme.radiusL
                             color: theme.surfaceContainer
@@ -1228,19 +1274,33 @@ Item {
         property string subtitle: ""
         default property alias control: controlSlot.data
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         implicitHeight: cardRow.implicitHeight + 32
         radius: theme.radiusL
         color: theme.surfaceContainer
 
-        RowLayout {
+        GridLayout {
             id: cardRow
             anchors.fill: parent
             anchors.margins: 16
-            spacing: 14
+            columnSpacing: 14
+            rowSpacing: 10
+            // Two columns while the label still has room; otherwise the control
+            // moves below the text so it never gets pushed out of the card.
+            columns: (width - 14 - controlSlot.implicitWidth) >= 170 ? 2 : 1
+
             ColumnLayout {
-                spacing: 3
                 Layout.fillWidth: true
-                Text { text: card.title; color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                Layout.minimumWidth: 0
+                spacing: 3
+                Text {
+                    text: card.title
+                    color: theme.textMain
+                    font.pixelSize: theme.fs(14)
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                    Layout.fillWidth: true
+                }
                 Text {
                     text: card.subtitle
                     color: theme.textMuted
@@ -1249,7 +1309,10 @@ Item {
                     Layout.fillWidth: true
                 }
             }
-            RowLayout { id: controlSlot }
+            RowLayout {
+                id: controlSlot
+                Layout.alignment: cardRow.columns === 1 ? Qt.AlignRight : Qt.AlignVCenter
+            }
         }
     }
 }
