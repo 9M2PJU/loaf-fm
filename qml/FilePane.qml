@@ -1060,7 +1060,7 @@ Item {
                                     radius: theme.radiusM
                                     color: "white"
                                     visible: false
-                                    layer.enabled: card.hasThumb && !theme.lowPower
+                                    layer.enabled: card.thumbable && theme.showThumbnails && !theme.lowPower
                                 }
 
                                 Image {
@@ -1074,9 +1074,11 @@ Item {
                                     asynchronous: true
                                     cache: true
                                     smooth: true
-                                    // The rounded mask costs an offscreen layer:
-                                    // only for real thumbnails, never in low-power mode.
-                                    layer.enabled: card.hasThumb && !theme.lowPower
+                                    // The rounded mask costs an offscreen layer: only for
+                                    // thumbable items, never in low-power mode. Must not
+                                    // depend on image status: toggling the layer while the
+                                    // thumbnail loads crashes Qt during DPI updates.
+                                    layer.enabled: card.thumbable && theme.showThumbnails && !theme.lowPower
                                     layer.effect: MultiEffect {
                                         maskEnabled: true
                                         maskSource: thumbMask
