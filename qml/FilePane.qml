@@ -412,6 +412,309 @@ Item {
             Layout.fillHeight: true
             transform: Translate { id: stageShift; y: 0 }
 
+            // ------------------------------------------------------------------
+            // Connected selection.
+            //
+            // One canvas paints the whole selection boundary: every selected
+            // cell is traced with the edges that face an unselected neighbour,
+            // convex corners get a quadratic curve, and concave (inner) corners
+            // get an arc from the neighbouring cells. Delegates only keep their
+            // content and hover state, so no seam rectangles are needed.
+            // ------------------------------------------------------------------
+            Canvas {
+                id: selectionCanvas
+                anchors.fill: parent
+                z: 0
+                antialiasing: true
+
+                Connections {
+                    target: pane
+                    function onSelectionChanged() {
+                        selectionCanvas.requestPaint();
+                    }
+                }
+                Connections {
+                    target: gridView
+                    function onContentYChanged() { selectionCanvas.requestPaint(); }
+                    function onContentXChanged() { selectionCanvas.requestPaint(); }
+                    function onWidthChanged() { selectionCanvas.requestPaint(); }
+                }
+                Connections {
+                    target: listView
+                    function onContentYChanged() { selectionCanvas.requestPaint(); }
+                    function onWidthChanged() { selectionCanvas.requestPaint(); }
+                }
+                Connections {
+                    target: paneEngine
+                    function onView_modeChanged() { selectionCanvas.requestPaint(); }
+                    function onCurrent_pathChanged() { selectionCanvas.requestPaint(); }
+                    function onFilter_textChanged() { repaintTimer.restart(); }
+                    function onModelReset() { repaintTimer.restart(); }
+                    function onItem_countChanged() { repaintTimer.restart(); }
+                    function onLayoutChanged() { repaintTimer.restart(); }
+                }
+                Connections {
+                    target: gridView
+                    function onCountChanged() { repaintTimer.restart(); }
+                    function onCellWidthChanged() { repaintTimer.restart(); }
+                    function onCellHeightChanged() { repaintTimer.restart(); }
+                }
+                Connections {
+                    target: listView
+                    function onCountChanged() { repaintTimer.restart(); }
+                }
+
+                // Rows settle a frame or two after the model changes, so paint
+                // once the delegates have their final positions.
+                Timer {
+                    id: repaintTimer
+                    interval: 40
+                    repeat: false
+                    onTriggered: selectionCanvas.requestPaint()
+                }
+                Component.onCompleted: requestPaint()
+
+                function collectSelection() {
+                    var sel = {};
+                    var paths = pane.selectedPaths();
+                    for (var i = 0; i < paths.length; ++i) {
+                        var r = paneEngine.row_of(paths[i]);
+                        if (r >= 0) sel[r] = true;
+                    }
+                    return sel;
+                }
+
+                function ctxRadius() { return pane.isList() ? 11 : 18; }
+
+                // Canvas styles need CSS strings; the QML `color` type only has
+                // numeric r/g/b/a members, so build one.
+                function cssColor(c) {
+                    return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255)
+                        + "," + Math.round(c.b * 255) + "," + c.a + ")";
+                }
+
+                property int paintErrors: 0
+                onPaint: {
+                    try { paintSelection(); } catch (e) {
+                        if (paintErrors++ < 3) console.error("selection paint failed: " + e + " / " + e.stack);
+                    }
+                }
+
+                function paintSelection() {
+                    var ctx = getContext("2d");
+                    ctx.clearRect(0, 0, width, height);
+                    var sel = collectSelection();
+                    if (pane.selectedCount > 0)
+                        paintBlock(ctx, sel);
+                }
+
+                // Traces the outline of the selected cells and fills it.
+                function paintBlock(ctx, sel) {
+                    // ---- 1. Collect the boundary edges of the union --------
+                    // Every side of a selected cell that faces an unselected
+                    // cell becomes a directed edge (clockwise, interior on the
+                    // right). One row of slack on each side of the viewport
+                    // keeps shapes that leave the screen open instead of
+                    // closing them off at the edge.
+                    var isList = pane.isList();
+                    var cols = isList ? 1 : pane.cols();
+                    var segs = [];
+                    var visible = visibleIndices();
+                    // Neighbours only count when they are traced too, otherwise
+                    // the walk dead-ends and the fill gets cut off at the edge.
+                    var traced = {};
+                    for (var t = 0; t < visible.length; ++t)
+                        traced[visible[t]] = true;
+                    for (var k = 0; k < visible.length; ++k) {
+                        var idx = visible[k];
+                        if (!sel[idx])
+                            continue;
+                        var g = baseRect(idx, sel, cols, traced);
+                        if (!g.up) segs.push([g.x0, g.y0, g.x1, g.y0]);
+                        if (!g.right) segs.push([g.x1, g.y0, g.x1, g.y1]);
+                        if (!g.down) segs.push([g.x1, g.y1, g.x0, g.y1]);
+                        if (!g.left) segs.push([g.x0, g.y1, g.x0, g.y0]);
+                    }
+                    if (segs.length === 0)
+                        return;
+
+                    // ---- 2. Chain the edges into closed loops --------------
+                    var loops = traceLoops(segs);
+                    var rad = ctxRadius();
+                    ctx.beginPath();
+                    for (var l = 0; l < loops.length; ++l)
+                        addLoop(ctx, loops[l], rad);
+
+                    ctx.fillStyle = cssColor(theme.secondaryContainer);
+                    ctx.fill();
+                    ctx.strokeStyle = cssColor(theme.primary);
+                    ctx.lineWidth = 1.5;
+                    ctx.lineJoin = "round";
+                    ctx.stroke();
+                }
+
+                // Final rect of one row/index in canvas coordinates. Selected
+                // neighbours pull the shared edge out to the grid line so two
+                // adjacent cells meet exactly; unselected sides keep the inner
+                // padding, which is what gives the block its soft outline.
+                function baseRect(idx, sel, cols, traced) {
+                    traced = traced || {};
+                    var on = function (n) { return n >= 0 && !!traced[n] && !!sel[n]; };
+                    if (pane.isList()) {
+                        var rowH = Math.round(38 * Math.max(0.85, Math.min(1.3, pane.zoom)));
+                        var ly = Math.round(listHeader.height + 6 + idx * (rowH + 3) - listView.contentY);
+                        var up = idx > 0 && on(idx - 1);
+                        var down = on(idx + 1);
+                        return {
+                            x0: 2, x1: listView.width - 2,
+                            // Rows are 3px apart: a selected neighbour pulls
+                            // the edge across the gap so the run is continuous.
+                            y0: up ? ly : ly + 2,
+                            y1: down ? ly + rowH + 3 : ly + rowH - 2,
+                            up: up, down: down, left: false, right: false
+                        };
+                    }
+                    var cw = gridView.cellWidth;
+                    var ch = gridView.cellHeight;
+                    var c = idx % cols;
+                    var row = Math.floor(idx / cols);
+                    var isUp = idx >= cols && on(idx - cols);
+                    var isDown = on(idx + cols);
+                    var isLeft = c > 0 && on(idx - 1);
+                    var isRight = c < cols - 1 && on(idx + 1);
+                    // No inset: cells must share their corners so two cells
+                    // touching diagonally can be joined by one smooth outline.
+                    return {
+                        x0: Math.round(c * cw - gridView.contentX),
+                        x1: Math.round((c + 1) * cw - gridView.contentX),
+                        y0: Math.round(row * ch - gridView.contentY),
+                        y1: Math.round((row + 1) * ch - gridView.contentY),
+                        up: isUp, down: isDown, left: isLeft, right: isRight
+                    };
+                }
+
+                // Rows that can touch the viewport, plus a row of slack.
+                function visibleIndices() {
+                    var out = [];
+                    var count = paneEngine.item_count;
+                    if (count <= 0)
+                        return out;
+                    if (pane.isList()) {
+                        var rowH = Math.round(38 * Math.max(0.85, Math.min(1.3, pane.zoom))) + 3;
+                        var first = Math.max(0, Math.floor(listView.contentY / rowH) - 1);
+                        var last = Math.min(count - 1, Math.ceil((listView.contentY + height) / rowH) + 1);
+                        for (var i = first; i <= last; ++i)
+                            out.push(i);
+                        return out;
+                    }
+                    var cols = pane.cols();
+                    var ch = gridView.cellHeight;
+                    var r0 = Math.max(0, Math.floor(gridView.contentY / ch) - 1);
+                    var r1 = Math.min(Math.floor((count - 1) / cols), Math.ceil((gridView.contentY + height) / ch) + 1);
+                    for (var r = r0; r <= r1; ++r) {
+                        for (var c = 0; c < cols; ++c) {
+                            var idx = r * cols + c;
+                            if (idx < count)
+                                out.push(idx);
+                        }
+                    }
+                    return out;
+                }
+
+                // Walk the directed edges. At a vertex with two ways out (two
+                // selected cells touching diagonally) keep turning as far left
+                // as possible: that bridges the diagonal instead of treating
+                // the cells as two separate shapes.
+                function traceLoops(segs) {
+                    var key = function (x, y) { return x + "," + y; };
+                    var outs = {};
+                    for (var i = 0; i < segs.length; ++i) {
+                        var s = segs[i];
+                        var k = key(s[0], s[1]);
+                        if (!outs[k])
+                            outs[k] = [];
+                        outs[k].push({ x2: s[2], y2: s[3], used: false });
+                    }
+
+                    var loops = [];
+                    for (var a = 0; a < segs.length; ++a) {
+                        var s0 = segs[a];
+                        var bucket = outs[key(s0[0], s0[1])];
+                        if (!bucket)
+                            continue;
+                        var edge = null;
+                        for (var b = 0; b < bucket.length; ++b) {
+                            if (!bucket[b].used && bucket[b].x2 === s0[2] && bucket[b].y2 === s0[3]) {
+                                edge = bucket[b];
+                                break;
+                            }
+                        }
+                        if (!edge)
+                            continue;
+
+                        var pts = [];
+                        var cx = s0[0], cy = s0[1], ex = s0[2], ey = s0[3];
+                        var sx = cx, sy = cy;
+                        edge.used = true;
+                        pts.push([cx, cy]);
+                        var guard = 0;
+                        while (guard++ < 200000) {
+                            pts.push([ex, ey]);
+                            if (ex === sx && ey === sy)
+                                break;
+                            var cand = outs[key(ex, ey)];
+                            if (!cand)
+                                break;
+                            var dinx = ex - cx, diny = ey - cy;
+                            var best = null, bestTurn = -1;
+                            for (var j = 0; j < cand.length; ++j) {
+                                var e = cand[j];
+                                if (e.used)
+                                    continue;
+                                var dox = e.x2 - ex, doy = e.y2 - ey;
+                                var turn = Math.atan2(dinx * doy - diny * dox, dinx * dox + diny * doy);
+                                if (turn <= 0)
+                                    turn += Math.PI * 2;
+                                if (turn > bestTurn) { bestTurn = turn; best = e; }
+                            }
+                            if (!best)
+                                break;
+                            best.used = true;
+                            cx = ex; cy = ey;
+                            ex = best.x2; ey = best.y2;
+                        }
+                        // Only a loop that made it back to where it started is
+                        // a real outline. A dead-ended walk would be closed by
+                        // a straight line across the shape, which is the stray
+                        // diagonal that flashes through the grid.
+                        if (pts.length > 3 && ex === sx && ey === sy)
+                            loops.push(pts);
+                    }
+                    return loops;
+                }
+
+                // One loop -> a path with every corner rounded. The radius is
+                // clamped to half of the shorter neighbouring side so short
+                // edges never fold over themselves.
+                function addLoop(ctx, pts, rad) {
+                    var n = pts.length;
+                    if (n > 1 && pts[n - 1][0] === pts[0][0] && pts[n - 1][1] === pts[0][1])
+                        n -= 1;
+                    if (n < 3)
+                        return;
+                    ctx.moveTo((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2);
+                    for (var i = 1; i <= n; ++i) {
+                        var p = pts[i % n];
+                        var prev = pts[i - 1];
+                        var next = pts[(i + 1) % n];
+                        var l1 = Math.sqrt(Math.pow(p[0] - prev[0], 2) + Math.pow(p[1] - prev[1], 2));
+                        var l2 = Math.sqrt(Math.pow(next[0] - p[0], 2) + Math.pow(next[1] - p[1], 2));
+                        ctx.arcTo(p[0], p[1], next[0], next[1], Math.max(0, Math.min(rad, l1 / 2, l2 / 2)));
+                    }
+                    ctx.closePath();
+                }
+            }
+
             // Empty / error / loading states.
             ColumnLayout {
                 anchors.centerIn: parent
@@ -657,15 +960,6 @@ Item {
                     readonly property int col: index % Math.max(1, cols)
                     readonly property int rowIdx: Math.floor(index / Math.max(1, cols))
 
-                    readonly property bool hasLeft: isSelected && col > 0 && !!pane.selection[paneEngine.path_at(index - 1)]
-                    readonly property bool hasRight: isSelected && col < cols - 1 && index + 1 < paneEngine.item_count && !!pane.selection[paneEngine.path_at(index + 1)]
-                    readonly property bool hasTop: isSelected && index >= cols && !!pane.selection[paneEngine.path_at(index - cols)]
-                    readonly property bool hasBottom: isSelected && index + cols < paneEngine.item_count && !!pane.selection[paneEngine.path_at(index + cols)]
-
-                    readonly property bool hasTopLeft: isSelected && hasTop && hasLeft && !!pane.selection[paneEngine.path_at(index - cols - 1)]
-                    readonly property bool hasTopRight: isSelected && hasTop && hasRight && !!pane.selection[paneEngine.path_at(index - cols + 1)]
-                    readonly property bool hasBottomLeft: isSelected && hasBottom && hasLeft && !!pane.selection[paneEngine.path_at(index + cols - 1)]
-                    readonly property bool hasBottomRight: isSelected && hasBottom && hasRight && !!pane.selection[paneEngine.path_at(index + cols + 1)]
 
                     readonly property bool isDropTarget: is_dir && folderDrop.containsDrag
                     readonly property bool hasThumb: theme.showThumbnails && thumbable && thumbImg.status === Image.Ready
@@ -689,55 +983,29 @@ Item {
                     }
 
                     Rectangle {
-                        id: highlight
+                        id: hoverOverlay
                         anchors.fill: parent
-                        anchors.topMargin: card.hasTop ? -6 : 4
-                        anchors.bottomMargin: card.hasBottom ? -6 : 4
-                        anchors.leftMargin: card.hasLeft ? -6 : 4
-                        anchors.rightMargin: card.hasRight ? -6 : 4
-                        radius: (card.hasLeft || card.hasRight || card.hasTop || card.hasBottom) ? theme.radiusM : theme.radiusL
-                        color: card.isDropTarget
-                            ? Qt.rgba(theme.primary.r, theme.primary.g, theme.primary.b, theme.isDark ? 0.20 : 0.14)
-                            : (card.isSelected ? theme.secondaryContainer : (cardMouse.pressed ? theme.activeOverlay : theme.hoverOverlay))
-                        opacity: (card.isSelected || cardMouse.containsMouse || card.isDropTarget) ? 1.0 : 0.0
-                        border.color: card.isCursor || card.isDropTarget ? theme.primary : "transparent"
-                        border.width: card.isCursor || card.isDropTarget ? 2 : 0
+                        anchors.margins: 4
+                        radius: theme.radiusM
+                        color: card.isDropTarget ? theme.primaryContainer : theme.hoverOverlay
+                        border.width: card.isDropTarget ? 2 : 0
+                        border.color: theme.primary
+                        visible: !card.isSelected && (cardMouse.containsMouse || card.isDropTarget)
+                    }
 
-                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
-                        Behavior on anchors.leftMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
-                        Behavior on anchors.rightMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
-                        Behavior on anchors.topMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
-                        Behavior on anchors.bottomMargin { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.35 } }
-
-                        // Diagonal seam fills (connects corners smoothly)
-                        Rectangle {
-                            visible: card.hasTop && card.hasLeft && card.hasTopLeft
-                            width: 14; height: 14; x: -7; y: -7
-                            color: highlight.color
-                            radius: 0
-                        }
-                        Rectangle {
-                            visible: card.hasTop && card.hasRight && card.hasTopRight
-                            width: 14; height: 14; x: parent.width - 7; y: -7
-                            color: highlight.color
-                            radius: 0
-                        }
-                        Rectangle {
-                            visible: card.hasBottom && card.hasLeft && card.hasBottomLeft
-                            width: 14; height: 14; x: -7; y: parent.height - 7
-                            color: highlight.color
-                            radius: 0
-                        }
-                        Rectangle {
-                            visible: card.hasBottom && card.hasRight && card.hasBottomRight
-                            width: 14; height: 14; x: parent.width - 7; y: parent.height - 7
-                            color: highlight.color
-                            radius: 0
-                        }
+                    // Keyboard cursor ring, drawn above the connected selection.
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        radius: theme.radiusM
+                        color: "transparent"
+                        border.width: card.isCursor ? 2 : 0
+                        border.color: theme.primary
+                        visible: card.isCursor
                     }
 
                     scale: !entered ? 0.82
-                        : (cardMouse.pressed ? 0.94 : ((cardMouse.containsMouse && !card.hasLeft && !card.hasRight) ? 1.03 : 1.0))
+                        : (cardMouse.pressed ? 0.94 : ((cardMouse.containsMouse && !card.isSelected) ? 1.03 : 1.0))
                     Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
 
                     ColumnLayout {
@@ -1109,12 +1377,12 @@ Item {
 
                     Rectangle {
                         anchors.fill: parent
+                        anchors.margins: 2
                         radius: theme.radiusM
-                        color: row.isSelected ? theme.secondaryContainer : (row.isDropTarget ? theme.primaryContainer : theme.hoverOverlay)
-                        opacity: (row.isSelected || rowMouse.containsMouse || row.isDropTarget) ? 1.0 : 0.0
+                        color: row.isDropTarget ? theme.primaryContainer : (rowMouse.containsMouse ? theme.hoverOverlay : "transparent")
+                        visible: !row.isSelected && (rowMouse.containsMouse || row.isDropTarget)
                         border.color: row.isCursor ? theme.primary : "transparent"
                         border.width: row.isCursor ? 2 : 0
-                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
                     }
 
                     RowLayout {
