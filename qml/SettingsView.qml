@@ -24,7 +24,6 @@ Item {
 
     readonly property bool card1Match: matchesQuery("theme appearance light dark auto mode color scheme")
     readonly property bool card2Match: matchesQuery("theme palette accent colors wallpaper catppuccin nord tokyonight gruvbox rosepine amber lavender violet ricing")
-    readonly property bool card3Match: matchesQuery("top left brand loaf logo badge show hide")
     readonly property bool card4Match: matchesQuery("icon style vector phosphor system adwaita desktop theme")
     readonly property bool card5Match: matchesQuery("phosphor weight variant thin light regular bold fill duotone stroke thickness")
 
@@ -43,7 +42,7 @@ Item {
     readonly property bool card17Match: matchesQuery("click rename inline single click")
     readonly property bool card18Match: matchesQuery("search file contents text inside")
 
-    readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card3Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
+    readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
         + (card16Match ? 1 : 0) + (card17Match ? 1 : 0) + (card18Match ? 1 : 0)
     readonly property int accessibilityMatches: (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
@@ -516,43 +515,6 @@ Item {
                                             }
                                         }
                                     }
-                                }
-                            }
-                        }
-
-                        // 3. Top-Left Loaf Logo Badge Toggle
-                        Rectangle {
-                            visible: settingsView.searchQuery.length === 0 || settingsView.card3Match
-                            Layout.fillWidth: true
-                            implicitHeight: brandRow.implicitHeight + 32
-                            radius: theme.radiusL
-                            color: theme.surfaceContainer
-                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
-
-                            RowLayout {
-                                id: brandRow
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                spacing: 14
-
-                                ColumnLayout {
-                                    spacing: 3
-                                    Text { text: qsTr("Top-Left Loaf Badge"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
-                                    Text { text: qsTr("Show the bread icon brand badge in the top bar"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
-                                }
-
-                                LoafSwitch {
-                                    id: brandBadgeSwitch
-                                    checked: theme.showBrandBadge
-                                    onToggled: theme.showBrandBadge = checked
-                                }
-                            }
-
-                            Connections {
-                                target: theme
-                                function onShowBrandBadgeChanged() {
-                                    if (brandBadgeSwitch.checked !== theme.showBrandBadge)
-                                        brandBadgeSwitch.checked = theme.showBrandBadge
                                 }
                             }
                         }

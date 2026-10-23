@@ -712,18 +712,18 @@ ApplicationWindow {
             spacing: 10
 
             Rectangle {
-                id: brandBadge
-                visible: (theme.showBrandBadge && window.width >= 820) || native.isAdmin
-                Layout.preferredWidth: brandRow.implicitWidth + 24
+                id: adminBadge
+                visible: native.isAdmin
+                Layout.preferredWidth: adminRow.implicitWidth + 24
                 Layout.preferredHeight: 42
                 radius: theme.radiusFull
-                color: native.isAdmin ? theme.dangerContainer : theme.surfaceContainer
+                color: theme.dangerContainer
                 RowLayout {
-                    id: brandRow
+                    id: adminRow
                     anchors.centerIn: parent
                     spacing: 8
-                    LoafIcon { name: native.isAdmin ? "shield-check" : "bread"; size: 18; color: native.isAdmin ? theme.danger : theme.primary }
-                    Text { text: native.isAdmin ? qsTr("Admin") : "Loaf"; color: native.isAdmin ? theme.danger : theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                    LoafIcon { name: "shield-check"; size: 18; color: theme.danger }
+                    Text { text: qsTr("Admin"); color: theme.danger; font.pixelSize: theme.fs(14); font.bold: true }
                 }
             }
 
