@@ -73,7 +73,17 @@ ApplicationWindow {
     }
 
     function showFiles() {
+        if (activeView === "files")
+            return;
         activeView = "files";
+        // The tab has to forget it was a PC / Settings tab, otherwise the
+        // sidebar keeps finding "the tab that shows This PC" and switching to
+        // it does nothing once you have navigated away from it.
+        var t = tabs[currentTab];
+        if (t && t.view !== "files") {
+            t.view = "files";
+            tabsChanged();
+        }
     }
 
     function setActivePane(p) {
@@ -304,6 +314,50 @@ ApplicationWindow {
         });
         tabs = list;
         restoreTab(currentTab + 1);
+    }
+
+    // Records what the tab on screen is showing. Without this the strip (and a
+    // later switch back) thinks a tab still shows whatever it showed first.
+    function markCurrentTab(view, title) {
+        var t = tabs[currentTab];
+        if (!t)
+            return;
+        if (t.view === view && t.title === title)
+            return;
+        t.view = view;
+        t.title = title;
+        tabsChanged();
+    }
+
+    // This PC and Settings take over the current tab instead of stacking a new
+    // one on every click. If one of them is already open in another tab, jump
+    // there instead.
+    function openPc() {
+        if (activeView === "pc")
+            return;
+        for (var p = 0; p < tabs.length; ++p) {
+            if (p !== currentTab && tabs[p] && tabs[p].view === "pc") {
+                switchTab(p);
+                return;
+            }
+        }
+        activeView = "pc";
+        markCurrentTab("pc", core.hostname || qsTr("This PC"));
+    }
+
+    function openSettings() {
+        if (activeView === "settings") {
+            showFiles();
+            return;
+        }
+        for (var p = 0; p < tabs.length; ++p) {
+            if (p !== currentTab && tabs[p] && tabs[p].view === "settings") {
+                switchTab(p);
+                return;
+            }
+        }
+        activeView = "settings";
+        markCurrentTab("settings", qsTr("Settings"));
     }
 
     function openInNewTab(path) {
@@ -1264,13 +1318,7 @@ ApplicationWindow {
                             window.newTab("pc://");
                             return;
                         }
-                        for (var p = 0; p < window.tabs.length; ++p) {
-                            if (window.tabs[p] && window.tabs[p].view === "pc") {
-                                window.switchTab(p);
-                                return;
-                            }
-                        }
-                        window.newTab("pc://");
+                        window.openPc();
                         return;
                     }
                     if (inNewTab && place.path) {
@@ -1291,17 +1339,7 @@ ApplicationWindow {
                         engine.set_path(place.path);
                 }
                 onSettingsClicked: {
-                    if (window.activeView === "settings") {
-                        window.showFiles();
-                        return;
-                    }
-                    for (var s = 0; s < window.tabs.length; ++s) {
-                        if (window.tabs[s] && window.tabs[s].view === "settings") {
-                            window.switchTab(s);
-                            return;
-                        }
-                    }
-                    window.newTab("settings://");
+                    window.openSettings();
                 }
                 onPlaceMenuRequested: function(place, x, y) { placeMenu.showFor(place, x, y); }
                 onSidebarMenuRequested: function(x, y) { sidebarMenu.showAt(x, y); }
@@ -1359,6 +1397,26 @@ ApplicationWindow {
                         Behavior on width { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
                         Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
 
+                        MouseArea {
+                            id: tabMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                            onClicked: function(m) {
+                                if (m.button === Qt.MiddleButton) {
+                                    window.closeTab(tabDelegate.index);
+                                    return;
+                                }
+                                var right = tabDelegate.isSplit
+                                    && mapToItem(tabDelegate, m.x, m.y).x > tabRightLabel.mapToItem(tabDelegate, 0, 0).x;
+                                window.switchTab(tabDelegate.index);
+                                if (right && pane1Loader.item)
+                                    window.setActivePane(pane1Loader.item);
+                                else
+                                    window.setActivePane(pane0);
+                            }
+                        }
+
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 12
@@ -1389,20 +1447,6 @@ ApplicationWindow {
                                     font.bold: tabDelegate.current && (!tabDelegate.isSplit || window.activePane === pane0)
                                     elide: Text.ElideRight
                                 }
-                                MouseArea {
-                                    id: tabMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                    onClicked: function(m) {
-                                        if (m.button === Qt.MiddleButton) {
-                                            window.closeTab(tabDelegate.index);
-                                        } else {
-                                            window.switchTab(tabDelegate.index);
-                                            window.setActivePane(pane0);
-                                        }
-                                    }
-                                }
                             }
 
                             // Divider for split tab
@@ -1428,19 +1472,6 @@ ApplicationWindow {
                                     font.pixelSize: theme.fs(12)
                                     font.bold: tabDelegate.current && tabDelegate.isSplit && pane1Loader.item && window.activePane === pane1Loader.item
                                     elide: Text.ElideRight
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                    onClicked: function(m) {
-                                        if (m.button === Qt.MiddleButton) {
-                                            window.closeTab(tabDelegate.index);
-                                        } else {
-                                            window.switchTab(tabDelegate.index);
-                                            if (pane1Loader.item) window.setActivePane(pane1Loader.item);
-                                        }
-                                    }
                                 }
                             }
 
