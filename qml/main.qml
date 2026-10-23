@@ -1112,12 +1112,16 @@ ApplicationWindow {
                 id: searchBar
                 Layout.preferredHeight: 42
                 Layout.preferredWidth: (searchInput.activeFocus || engine.is_searching_everywhere)
-                    ? (window.width < 900 ? 280 : 440) : (window.width < 900 ? 180 : 240)
+                    ? (window.width < 900 ? 280 : 380) : (window.width < 900 ? 180 : 220)
                 Layout.minimumWidth: 120
                 radius: theme.radiusFull
                 color: searchInput.activeFocus ? theme.surfaceContainerHighest : theme.surfaceContainer
                 border.width: searchInput.activeFocus ? 1.5 : 0
                 border.color: theme.primary
+
+                Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.38 } }
+                Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
 
                 RowLayout {
                     id: searchRow
@@ -1214,51 +1218,16 @@ ApplicationWindow {
                         }
                     }
 
-                    // Scope pills.
-                    Repeater {
-                        model: (window.activeView === "files" && (searchInput.activeFocus || engine.is_searching_everywhere))
-                            ? [{ scope: "folder", label: qsTr("Subfolders"), icon: "tree-structure" },
-                               { scope: "home", label: qsTr("Everywhere"), icon: "globe" }]
-                            : []
-                        delegate: Rectangle {
-                            id: pill
-                            required property var modelData
-                            readonly property bool active: engine.is_searching_everywhere && window.searchScope === modelData.scope
-                            Layout.preferredHeight: 28
-                            Layout.preferredWidth: pillRow.implicitWidth + 16
-                            radius: theme.radiusFull
-                            color: active ? theme.primary : (pillMouse.containsMouse ? theme.hoverOverlay : theme.surfaceContainerLow)
-                            Accessible.role: Accessible.Button
-                            Accessible.name: modelData.label
-                            RowLayout {
-                                id: pillRow
-                                anchors.centerIn: parent
-                                spacing: 4
-                                LoafIcon { name: pill.modelData.icon; size: 12; color: pill.active ? theme.primaryFg : theme.textMain }
-                                Text {
-                                    visible: window.width >= 900
-                                    text: pill.modelData.label
-                                    color: pill.active ? theme.primaryFg : theme.textMain
-                                    font.pixelSize: theme.fs(11)
-                                    font.bold: true
-                                }
-                            }
-                            MouseArea {
-                                id: pillMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    window.searchScope = pill.modelData.scope;
-                                    var q = searchInput.text.trim();
-                                    if (q.length === 0) {
-                                        searchInput.forceActiveFocus();
-                                        return;
-                                    }
-                                    engine.set_filter("");
-                                    engine.search(q, pill.modelData.scope, theme.searchContents);
-                                }
-                            }
+                    // Single search settings dropdown button
+                    TopIconButton {
+                        id: searchSettingsBtn
+                        visible: window.activeView === "files"
+                        iconName: "sliders-horizontal"
+                        small: true
+                        accessibleName: qsTr("Search settings")
+                        onClicked: {
+                            var p = mapToItem(window.contentItem, 0, height + 4);
+                            searchSettingsMenu.openAt(p.x, p.y);
                         }
                     }
 
@@ -2148,6 +2117,104 @@ ApplicationWindow {
                 }
             ];
             openAt(px, py);
+        }
+    }
+
+    LoafMenu {
+        id: searchSettingsMenu
+        menuMinWidth: 260
+        menuMaxWidth: 320
+        model: []
+
+        Text {
+            Layout.leftMargin: 8
+            Layout.topMargin: 4
+            text: qsTr("SEARCH SCOPE")
+            color: theme.textMuted
+            font.pixelSize: theme.fs(10)
+            font.bold: true
+            font.letterSpacing: 0.8
+        }
+
+        LoafMenuItem {
+            text: qsTr("Filter This Folder")
+            icon: "folder"
+            checkable: true
+            checked: !engine.is_searching_everywhere
+            onTriggered: {
+                if (engine.is_searching_everywhere) {
+                    engine.clear_search();
+                    if (searchInput.text.trim().length > 0)
+                        engine.set_filter(searchInput.text.trim());
+                }
+            }
+        }
+
+        LoafMenuItem {
+            text: qsTr("Search Subfolders")
+            icon: "tree-structure"
+            checkable: true
+            checked: engine.is_searching_everywhere && window.searchScope === "folder"
+            onTriggered: {
+                if (engine.is_searching_everywhere && window.searchScope === "folder") {
+                    engine.clear_search();
+                    if (searchInput.text.trim().length > 0)
+                        engine.set_filter(searchInput.text.trim());
+                    return;
+                }
+                window.searchScope = "folder";
+                var q = searchInput.text.trim();
+                if (q.length > 0) {
+                    engine.set_filter("");
+                    engine.search(q, "folder", theme.searchContents);
+                } else {
+                    searchInput.forceActiveFocus();
+                }
+            }
+        }
+
+        LoafMenuItem {
+            text: qsTr("Search Everywhere")
+            icon: "globe"
+            checkable: true
+            checked: engine.is_searching_everywhere && window.searchScope === "home"
+            onTriggered: {
+                if (engine.is_searching_everywhere && window.searchScope === "home") {
+                    engine.clear_search();
+                    if (searchInput.text.trim().length > 0)
+                        engine.set_filter(searchInput.text.trim());
+                    return;
+                }
+                window.searchScope = "home";
+                var q = searchInput.text.trim();
+                if (q.length > 0) {
+                    engine.set_filter("");
+                    engine.search(q, "home", theme.searchContents);
+                } else {
+                    searchInput.forceActiveFocus();
+                }
+            }
+        }
+
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.topMargin: 4; Layout.bottomMargin: 4; color: theme.separator }
+
+        Text {
+            Layout.leftMargin: 8
+            text: qsTr("SEARCH OPTIONS")
+            color: theme.textMuted
+            font.pixelSize: theme.fs(10)
+            font.bold: true
+            font.letterSpacing: 0.8
+        }
+
+        LoafSwitch {
+            label: qsTr("Search File Contents")
+            checked: theme.searchContents
+            onToggled: function(c) {
+                theme.searchContents = c;
+                if (engine.is_searching_everywhere && searchInput.text.trim().length > 0)
+                    engine.search(searchInput.text.trim(), window.searchScope, theme.searchContents);
+            }
         }
     }
 
