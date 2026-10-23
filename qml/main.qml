@@ -2052,7 +2052,8 @@ ApplicationWindow {
         if (kind === "dir") {
             var newSub = [
                 { text: qsTr("Folder"), icon: "folder-plus", shortcut: "Ctrl+Shift+N", action: function() { inputModal.showNewFolder(); } },
-                { text: qsTr("Empty File"), icon: "file-plus", action: function() { inputModal.showNewFile(); } }
+                { text: qsTr("Empty File"), icon: "file-plus", action: function() { inputModal.showNewFile(); } },
+                { text: qsTr("Symlink…"), icon: "link", action: function() { symlinkModal.openFor(e.current_path); } }
             ];
             var templates = JSON.parse(core.templates_json() || "[]");
             if (templates.length > 0) {
@@ -2243,6 +2244,91 @@ ApplicationWindow {
                 theme.searchContents = c;
                 if (engine.is_searching_everywhere && searchInput.text.trim().length > 0)
                     engine.search(searchInput.text.trim(), window.searchScope, theme.searchContents);
+            }
+        }
+    }
+
+    LoafDialog {
+        id: symlinkModal
+        title: qsTr("Create Symlink")
+        dialogWidth: 420
+        property string inDir: ""
+
+        function openFor(dirPath) {
+            inDir = dirPath;
+            targetField.text = "";
+            linkNameField.text = "";
+            linkNameField.autoNamed = false;
+            open();
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 12
+
+            Text {
+                text: qsTr("Target file or folder path:")
+                color: theme.textMain
+                font.pixelSize: theme.fs(12)
+            }
+            LoafTextField {
+                id: targetField
+                Layout.fillWidth: true
+                placeholderText: "/path/to/target/file"
+                onTextChanged: {
+                    if (linkNameField.text.length === 0 || linkNameField.autoNamed) {
+                        var p = text.trim();
+                        var parts = p.split("/").filter(function(x) { return x.length > 0; });
+                        if (parts.length > 0) {
+                            linkNameField.text = parts[parts.length - 1];
+                            linkNameField.autoNamed = true;
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: qsTr("Symlink name in %1:").arg(symlinkModal.inDir)
+                color: theme.textMain
+                font.pixelSize: theme.fs(12)
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+            }
+            LoafTextField {
+                id: linkNameField
+                property bool autoNamed: false
+                Layout.fillWidth: true
+                placeholderText: qsTr("Link name")
+                onTextEdited: autoNamed = false
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                LoafButton {
+                    text: qsTr("Cancel")
+                    variant: "text"
+                    onClicked: symlinkModal.close()
+                }
+                LoafButton {
+                    text: qsTr("Create Link")
+                    variant: "filled"
+                    enabled: targetField.text.trim().length > 0 && linkNameField.text.trim().length > 0
+                    onClicked: {
+                        var target = targetField.text.trim();
+                        var linkName = linkNameField.text.trim();
+                        var fullLink = symlinkModal.inDir + "/" + linkName;
+                        symlinkModal.close();
+                        if (core.create_symlink(target, fullLink)) {
+                            window.activePane.pendingSelect = [fullLink];
+                            window.activePane.engine.refresh();
+                            window.toast("info", qsTr("Symlink created"));
+                        } else {
+                            window.toast("error", qsTr("Could not create symlink"));
+                        }
+                    }
+                }
             }
         }
     }

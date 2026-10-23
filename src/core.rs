@@ -76,6 +76,8 @@ pub mod qobject {
         #[qinvokable]
         fn rename_bookmark(self: Pin<&mut LoafCore>, path: &QString, label: &QString);
         #[qinvokable]
+        fn create_symlink(self: &LoafCore, target: &QString, link_path: &QString) -> bool;
+        #[qinvokable]
         fn is_bookmarked(self: &LoafCore, path: &QString) -> bool;
         #[qinvokable]
         fn set_place_hidden(self: Pin<&mut LoafCore>, id: &QString, hidden: bool);
@@ -762,6 +764,20 @@ impl qobject::LoafCore {
     pub fn is_bookmarked(&self, path: &QString) -> bool {
         let p = PathBuf::from(path.to_string());
         xdg::bookmarks().iter().any(|b| b.path().as_deref() == Some(p.as_path()))
+    }
+
+    pub fn create_symlink(&self, target: &QString, link_path: &QString) -> bool {
+        let t = target.to_string();
+        let l = link_path.to_string();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&t, &l).is_ok()
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (t, l);
+            false
+        }
     }
 
     pub fn set_place_hidden(self: Pin<&mut Self>, id: &QString, hidden: bool) {
