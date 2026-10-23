@@ -336,7 +336,9 @@ Item {
         return paneEngine.location_kind === "dir" ? paneEngine.current_path : "";
     }
 
-    readonly property real zoom: theme.zoom
+    property real animZoom: theme.zoom
+    Behavior on animZoom { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.38 } }
+    readonly property real zoom: animZoom
     readonly property int cellW: Math.round(124 * zoom)
     readonly property int cellH: Math.round(114 * zoom)
     readonly property int iconSize: Math.round(42 * zoom)
@@ -774,9 +776,14 @@ Item {
             GridView {
                 id: gridView
                 anchors.fill: parent
-                visible: !pane.isList()
+                z: 1
+                visible: opacity > 0.01
+                opacity: !pane.isList() ? 1.0 : 0.0
+                scale: !pane.isList() ? 1.0 : 0.97
                 enabled: visible
                 clip: true
+                Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
+                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.42 } }
                 cellWidth: pane.cellW
                 cellHeight: pane.cellH
                 cacheBuffer: theme.lowPower ? 0 : cellHeight * 2
@@ -1279,8 +1286,13 @@ Item {
 
             ListView {
                 id: listView
-                visible: pane.isList()
+                z: 1
+                visible: opacity > 0.01
+                opacity: pane.isList() ? 1.0 : 0.0
+                scale: pane.isList() ? 1.0 : 0.97
                 enabled: visible
+                Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 190; easing.type: Easing.OutCubic } }
+                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.42 } }
                 anchors.top: listHeader.bottom
                 anchors.topMargin: 6
                 anchors.left: parent.left

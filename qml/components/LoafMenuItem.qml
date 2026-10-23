@@ -156,6 +156,8 @@ Item {
             name: root.icon
             size: 16
             color: root.danger ? theme.danger : theme.textMain
+            scale: itemMouse.containsMouse ? 1.12 : 1.0
+            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 4.5; damping: 0.3 } }
         }
 
         Image {

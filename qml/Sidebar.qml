@@ -43,16 +43,75 @@ Rectangle {
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("Sidebar")
 
+    // Traveling selection highlight that smoothly glides between places, trash, and settings
+    Rectangle {
+        id: selectionHighlight
+        z: 1
+        x: 12
+        width: rail.expanded ? (rail.width - 24) : 44
+        height: 44
+        radius: 22
+        color: theme.primaryContainer
+        visible: opacity > 0.01
+        opacity: targetY >= 0 ? 1.0 : 0.0
+        property real targetY: -100
+        y: targetY
+
+        Behavior on y {
+            enabled: theme.animate
+            SpringAnimation { spring: 4.2; damping: 0.38 }
+        }
+        Behavior on width {
+            enabled: theme.animate
+            SpringAnimation { spring: 3.5; damping: 0.35 }
+        }
+        Behavior on opacity {
+            enabled: theme.animate
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+        }
+    }
+
+    function updateHighlight() {
+        if (!rail.activeId || rail.activeId.length === 0) {
+            selectionHighlight.targetY = -100;
+            return;
+        }
+        if (rail.activeId === "settings") {
+            var pt = settingsBtn.mapToItem(rail, 0, 0);
+            selectionHighlight.targetY = pt.y;
+            return;
+        }
+        if (rail.activeId === "trash" && rail.showTrash) {
+            var ptTrash = trashContainer.mapToItem(rail, 0, 0);
+            selectionHighlight.targetY = ptTrash.y;
+            return;
+        }
+        var filtered = placeList.model || [];
+        for (var i = 0; i < filtered.length; ++i) {
+            if (filtered[i].id === rail.activeId) {
+                var it = placeList.itemAtIndex(i);
+                if (it) {
+                    var p = it.mapToItem(rail, 0, 0);
+                    selectionHighlight.targetY = p.y;
+                    return;
+                }
+            }
+        }
+        selectionHighlight.targetY = -100;
+    }
+
+    onActiveIdChanged: Qt.callLater(updateHighlight)
+    onShowTrashChanged: Qt.callLater(updateHighlight)
+    onExpandedChanged: Qt.callLater(updateHighlight)
+
     ColumnLayout {
         anchors.fill: parent
         anchors.topMargin: 14
         anchors.bottomMargin: 14
         spacing: 8
+        z: 2
 
-        // Expand / collapse header button with dynamic states:
-        // - Collapsed: sidebar icon
-        // - Expanded: bread icon + "Loaf"
-        // - Expanded & hovered: sidebar icon + "Collapse"
+        // Expand / collapse header button with animated icon + text
         Item {
             id: headerToggleItem
             Layout.fillWidth: true
@@ -81,27 +140,48 @@ Rectangle {
                     width: 44
                     height: 44
 
+                    // Two marks that hand over to each other: no spinning, the
+                    // sidebar glyph fades out while the Loaf mark fades in.
                     LoafIcon {
                         anchors.centerIn: parent
-                        name: !rail.expanded
-                            ? "sidebar-simple"
-                            : (headerToggleItem.isHovered ? "sidebar" : "bread")
+                        name: "sidebar-simple"
                         size: 20
-                        color: !rail.expanded ? theme.textMain : theme.primary
-                        Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                        color: theme.textMain
+                        opacity: rail.expanded ? 0.0 : 1.0
+                        scale: rail.expanded ? 0.65 : 1.0
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+                        Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.8; damping: 0.45 } }
+                    }
+
+                    LoafIcon {
+                        anchors.centerIn: parent
+                        name: headerToggleItem.isHovered ? "sidebar" : "bread"
+                        size: 20
+                        color: theme.primary
+                        opacity: rail.expanded ? 1.0 : 0.0
+                        scale: rail.expanded ? (headerToggleItem.isHovered ? 1.10 : 1.0) : 0.65
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+                        Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 4.0; damping: 0.3 } }
                     }
                 }
 
                 Text {
-                    visible: rail.expanded
+                    visible: opacity > 0.01
                     opacity: rail.expanded ? 1.0 : 0.0
+                    scale: rail.expanded ? 1.0 : 0.7
+                    transformOrigin: Item.Left
+                    transform: Translate {
+                        x: rail.expanded ? 0 : -10
+                        Behavior on x { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
+                    }
                     text: headerToggleItem.isHovered ? qsTr("Collapse") : "Loaf"
                     color: headerToggleItem.isHovered ? theme.primary : theme.textMain
                     font.pixelSize: theme.fs(14)
                     font.bold: !headerToggleItem.isHovered
                     elide: Text.ElideRight
                     Layout.fillWidth: true
-                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 160 } }
+                    Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 180 } }
+                    Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.35 } }
                     Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                 }
             }
@@ -134,6 +214,10 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             model: rail.places.filter(function(p) { return p.id !== "trash"; })
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 6 }
+
+            onContentYChanged: rail.updateHighlight()
+            onCountChanged: Qt.callLater(rail.updateHighlight)
+            Component.onCompleted: Qt.callLater(rail.updateHighlight)
 
             delegate: RailButton {
                 width: placeList.width
@@ -223,6 +307,7 @@ Rectangle {
         }
 
         RailButton {
+            id: settingsBtn
             Layout.fillWidth: true
             iconName: "gear"
             systemIcon: "preferences-system-symbolic"
@@ -268,7 +353,7 @@ Rectangle {
             height: 44
             radius: 22
             color: btn.dropHover ? theme.primaryContainer
-                : (btn.selected ? theme.primaryContainer : (mouse.containsMouse ? theme.hoverOverlay : "transparent"))
+                : (mouse.containsMouse && !btn.selected ? theme.hoverOverlay : "transparent")
             border.width: btn.dropHover ? 2 : 0
             border.color: theme.primary
             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
