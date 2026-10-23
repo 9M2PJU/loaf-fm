@@ -257,8 +257,12 @@ ApplicationWindow {
         splitView = !!t.split;
         if (t.states && t.states[0])
             pane0.engine.restore_state(t.states[0]);
-        if (t.split && pane1Loader.item && t.states && t.states[1])
-            pane1Loader.item.engine.restore_state(t.states[1]);
+        if (t.split && t.states && t.states[1]) {
+            if (pane1Loader.item)
+                pane1Loader.item.engine.restore_state(t.states[1]);
+            else
+                splitSeedState = t.states[1];
+        }
         activePane = (t.split && t.active === 1 && pane1Loader.item) ? pane1Loader.item : pane0;
         if (t.view === "settings")
             window.activeView = "settings";
@@ -384,18 +388,39 @@ ApplicationWindow {
         }
     }
 
-    function toggleSplit() {
-        if (splitView)
-            activePane = pane0;
-        splitView = !splitView;
-        if (splitView) {
-            Qt.callLater(function() {
-                if (pane1Loader.item) {
-                    pane1Loader.item.engine.set_path(engine.location_kind === "dir" ? engine.current_path : core.user_dir("HOME"));
-                    activePane = pane1Loader.item;
-                }
-            });
+    property string splitSeedPath: ""
+    // Saved state for the right pane, applied when its Loader creates the item.
+    property string splitSeedState: ""
+
+    function seedSplit() {
+        if (!pane1Loader.item)
+            return;
+        if (splitSeedState !== "") {
+            var st = splitSeedState;
+            splitSeedState = "";
+            pane1Loader.item.engine.restore_state(st);
+            return;
         }
+        if (splitSeedPath === "")
+            return;
+        var p = splitSeedPath;
+        splitSeedPath = "";
+        pane1Loader.item.engine.set_path(p);
+        activePane = pane1Loader.item;
+    }
+
+    function toggleSplit() {
+        if (window.activeView !== "files")
+            return;
+        if (splitView) {
+            activePane = pane0;
+            splitView = false;
+            splitSeedPath = "";
+            return;
+        }
+        splitSeedPath = engine.location_kind === "dir" ? engine.current_path : core.user_dir("HOME");
+        splitView = true;
+        seedSplit();
     }
 
     function saveSession() {
@@ -1552,24 +1577,27 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
-                    RowLayout {
+                    Item {
                         id: paneRow
                         anchors.fill: parent
-                        spacing: 14
                         visible: window.activeView === "files"
+                        readonly property real gap: 14
+                        // 0 = single pane, 1 = two equal panes
+                        property real split: window.splitView ? 1 : 0
+                        Behavior on split { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.4; epsilon: 0.002 } }
+                        readonly property real rightWidth: Math.max(0, Math.round((width - gap) / 2 * split))
+                        readonly property real leftWidth: width - (rightWidth > 0 ? rightWidth + gap * Math.min(1, split) : 0)
 
-                        // Left Pane Container
                         Rectangle {
                             id: pane0Container
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.preferredWidth: window.splitView ? Math.round((paneRow.width - paneRow.spacing) / 2) : paneRow.width
+                            x: 0
+                            width: paneRow.leftWidth
+                            height: parent.height
                             radius: theme.radiusXl
                             color: theme.surfaceContainerLow
                             clip: true
                             border.width: (window.splitView && window.activePane === pane0) ? 2 : (window.splitView ? 1 : (window.keyboardNavActive ? 2 : 0))
                             border.color: (window.splitView && window.activePane === pane0) ? theme.primary : (window.splitView ? theme.outlineVariant : theme.primary)
-                            Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
                             Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                             Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
 
@@ -1583,32 +1611,31 @@ ApplicationWindow {
                             }
                         }
 
-                        // Right Pane Container (Sliding Accordion Animation)
                         Rectangle {
                             id: pane1Container
-                            Layout.fillHeight: true
-                            Layout.preferredWidth: window.splitView ? Math.round((paneRow.width - paneRow.spacing) / 2) : 0
+                            x: paneRow.width - width
+                            width: paneRow.rightWidth
+                            height: parent.height
                             visible: width > 2
-                            opacity: window.splitView ? 1.0 : 0.0
-                            scale: window.splitView ? 1.0 : 0.92
-                            transformOrigin: Item.Right
+                            opacity: Math.min(1, paneRow.split * 1.6)
                             radius: theme.radiusXl
                             color: theme.surfaceContainerLow
                             clip: true
                             border.width: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? 2 : 1
                             border.color: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? theme.primary : theme.outlineVariant
-
-                            Behavior on Layout.preferredWidth { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
-                            Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.6; damping: 0.35 } }
-                            Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
                             Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
                             Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
 
                             Loader {
                                 id: pane1Loader
-                                anchors.fill: parent
-                                anchors.margins: 14
-                                active: window.splitView || pane1Container.width > 20
+                                // Keep the pane at its full width while the container animates, so
+                                // the contents slide in rather than reflow.
+                                x: 14
+                                y: 14
+                                width: Math.max(0, Math.round((paneRow.width - paneRow.gap) / 2) - 28)
+                                height: parent.height - 28
+                                active: window.splitView || pane1Container.visible
+                                onLoaded: window.seedSplit()
                                 sourceComponent: FilePane {
                                     id: pane1
                                     isActive: window.activePane === pane1
