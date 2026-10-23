@@ -28,6 +28,15 @@ ApplicationWindow {
     property bool isEditingPath: false
     property bool keyboardNavActive: false
     property bool splitView: false
+    readonly property bool showHidden: activePane ? activePane.engine.show_hidden : false
+
+    function toggleShowHidden() {
+        var v = !pane0.engine.show_hidden;
+        if (pane0.engine.show_hidden !== v)
+            pane0.engine.toggle_show_hidden();
+        if (pane1Loader.item && pane1Loader.item.engine.show_hidden !== v)
+            pane1Loader.item.engine.toggle_show_hidden();
+    }
     property var activePane: pane0
     // The engine (model) of the pane the user is working in.
     readonly property var engine: activePane ? activePane.engine : pane0.engine
