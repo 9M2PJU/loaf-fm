@@ -10,7 +10,14 @@
 #
 # Environment variables:
 #   LOAF_OS_SPOOF  Override /etc/os-release ID for testing (e.g. LOAF_OS_SPOOF=ubuntu)
-#   PREFIX         Custom install prefix (default: $HOME/.local, or /usr/local with --system)
+#   PREFIX         Install prefix for tarball installs (default: $HOME/.local)
+#
+# Release asset naming contract (v0.1.0 is the reference release):
+#   deb:     loaf_<version>_<amd64|arm64>.deb
+#   pacman:  loaf-<version>-1-<x86_64|aarch64>.pkg.tar.zst
+#   rpm:     loaf-<version>-1.*.<x86_64|aarch64>.rpm
+#   tarball: loaf-v<version>-linux-<x86_64|aarch64>.tar.gz
+#   version = release tag without the leading "v"
 # ==============================================================================
 
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -50,6 +57,7 @@ print_banner() {
 # Environment detection
 # ==============================================================================
 detect_os() {
+    OS_LIKE=""
     if [ -n "$LOAF_OS_SPOOF" ]; then
         echo -e "${AMBER}[!] OS Spoofer active: spoofing ID as '$LOAF_OS_SPOOF'${RESET}"
         OS_ID="$LOAF_OS_SPOOF"
@@ -61,6 +69,7 @@ detect_os() {
         . /etc/os-release
         OS_ID="${ID:-unknown}"
         OS_NAME="${PRETTY_NAME:-$ID}"
+        OS_LIKE="${ID_LIKE:-}"
     elif [ "$(uname)" = "Darwin" ]; then
         OS_ID="macos"
         OS_NAME="macOS"
@@ -88,13 +97,35 @@ check_nixos() {
 detect_arch() {
     ARCH="$(uname -m)"
     case "$ARCH" in
-        x86_64|amd64)   BINARY_ARCH="x86_64" ;;
-        aarch64|arm64)  BINARY_ARCH="aarch64" ;;
+        x86_64|amd64)  BINARY_ARCH="x86_64"; DEB_ARCH="amd64" ;;
+        aarch64|arm64) BINARY_ARCH="aarch64"; DEB_ARCH="arm64" ;;
         *)
             echo -e "${RED}Error: Unsupported architecture: $ARCH${RESET}"
             exit 1
             ;;
     esac
+}
+
+# Map the distro (ID, then ID_LIKE) to a native package family.
+detect_pkg_family() {
+    PKG_FAMILY="none"      # deb | rpm | pacman | none
+    RPM_FRONTEND="dnf"     # dnf | zypper
+
+    local probe
+    for probe in "$OS_ID" $OS_LIKE; do
+        case "$probe" in
+            debian|ubuntu|linuxmint|pop|elementary|kali|raspbian|neon|zorin)
+                PKG_FAMILY="deb"; break ;;
+            arch|archlinux|manjaro|endeavouros|cachyos|artix|garuda)
+                PKG_FAMILY="pacman"; break ;;
+            fedora)
+                PKG_FAMILY="rpm"; RPM_FRONTEND="dnf"; break ;;
+            rhel|centos|rocky|almalinux|nobara)
+                PKG_FAMILY="rpm"; RPM_FRONTEND="dnf"; break ;;
+            opensuse*|sles|suse)
+                PKG_FAMILY="rpm"; RPM_FRONTEND="zypper"; break ;;
+        esac
+    done
 }
 
 # TTY detection: piped via curl|bash means stdin IS the script, so we must
@@ -127,7 +158,25 @@ determine_prefix() {
     fi
 }
 
+# Run a command with root rights (native packages live in /usr).
+as_root() {
+    if [ "$EUID" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo -e "${RED}Error: '$1' needs root rights, but neither root nor 'sudo' is available.${RESET}"
+        exit 1
+    fi
+}
+
+# True when Loaf is present via the native package manager or on disk.
 check_installed() {
+    case "$PKG_FAMILY" in
+        deb)    command -v dpkg >/dev/null 2>&1 && dpkg -s loaf >/dev/null 2>&1 && return 0 ;;
+        rpm)    command -v rpm >/dev/null 2>&1 && rpm -q loaf >/dev/null 2>&1 && return 0 ;;
+        pacman) command -v pacman >/dev/null 2>&1 && pacman -Q loaf >/dev/null 2>&1 && return 0 ;;
+    esac
     [ -f "$PREFIX/bin/loaf" ]
 }
 
@@ -250,40 +299,58 @@ prompt_text() {
     return 1
 }
 
+# Human name for the native package family, or empty.
+pkg_family_label() {
+    case "$PKG_FAMILY" in
+        deb)    echo ".deb (apt)" ;;
+        rpm)    if [ "$RPM_FRONTEND" = "zypper" ]; then echo ".rpm (zypper)"; else echo ".rpm (dnf)"; fi ;;
+        pacman) echo ".pkg.tar.zst (pacman)" ;;
+        *)      echo "" ;;
+    esac
+}
+
 choose_version_and_source() {
     # Update flow: always latest stable, no prompting
     if [ -n "${SKIP_VERSION_PROMPT:-}" ]; then
-        VERSION_CHOICE="stable"
+        SOURCE_KIND="stable"
         return 0
     fi
 
     # Non-interactive (flag used without a TTY): default to the stable release
     if [ -z "$TTY_FILE" ]; then
-        VERSION_CHOICE="${VERSION_CHOICE:-stable}"
-        echo -e "${MUTED}(non-interactive: using $VERSION_CHOICE)${RESET}"
+        SOURCE_KIND="${SOURCE_KIND:-stable}"
+        echo -e "${MUTED}(non-interactive: using $SOURCE_KIND)${RESET}"
         return 0
     fi
 
-    local version_options=(
-        "Latest Stable Release (precompiled binary)"
-        "Specific Release Version (choose a version tag)"
-        "Latest Development Commit (clone & build from source)"
-        "Local Source Directory (current workspace)"
+    local native_label=""
+    if [ "$PKG_FAMILY" != "none" ]; then
+        native_label=" — recommended for $(echo "$OS_NAME" | cut -d' ' -f1)"
+    fi
+
+    local options=(
+        "Stable release, native package${native_label}"
+        "Stable release, universal tarball (no package manager)"
+        "Specific release version (choose a tag)"
+        "Latest development commit (clone & build from source)"
+        "Local source directory (current workspace)"
         "Cancel"
     )
-    interactive_choose "Select installation source / version:" "${version_options[@]}"
+    interactive_choose "Select installation source / version:" "${options[@]}"
 
+    VERSION_TAG=""
     case "$SELECTED_INDEX" in
-        0) VERSION_CHOICE="stable" ;;
-        1)
-            VERSION_CHOICE="tag"
+        0) SOURCE_KIND="stable" ;;
+        1) SOURCE_KIND="tarball" ;;
+        2)
+            SOURCE_KIND="tag"
             if prompt_text "Enter release tag (e.g. v0.1.0):" "v0.1.0"; then
                 VERSION_TAG="$PROMPT_VALUE"
             fi
             VERSION_TAG="${VERSION_TAG:-v0.1.0}"
             ;;
-        2) VERSION_CHOICE="dev" ;;
-        3) VERSION_CHOICE="local" ;;
+        3) SOURCE_KIND="dev" ;;
+        4) SOURCE_KIND="local" ;;
         *) echo "Operation cancelled."; exit 0 ;;
     esac
 }
@@ -291,33 +358,74 @@ choose_version_and_source() {
 # ==============================================================================
 # Release downloading
 # ==============================================================================
-# Download a release tarball for $BINARY_ARCH into $1. Uses "latest" when
-# VERSION_TAG is empty. Returns 1 if no matching asset exists.
-download_release() {
-    local dest="$1" api_url asset_url
-
-    if [ -z "${VERSION_TAG:-}" ] || [ "$VERSION_TAG" = "latest" ]; then
-        api_url="$API/repos/$REPO/releases/latest"
-    else
-        api_url="$API/repos/$REPO/releases/tags/$VERSION_TAG"
+RELEASE_JSON=""
+release_json() {
+    if [ -z "$RELEASE_JSON" ]; then
+        local url
+        if [ -z "${VERSION_TAG:-}" ] || [ "$VERSION_TAG" = "latest" ]; then
+            url="$API/repos/$REPO/releases/latest"
+        else
+            url="$API/repos/$REPO/releases/tags/$VERSION_TAG"
+        fi
+        RELEASE_JSON="$(curl -fsSL --max-time 30 "$url" 2>/dev/null || true)"
     fi
+    [ -n "$RELEASE_JSON" ]
+}
 
-    local json
-    json="$(curl -fsSL --max-time 30 "$api_url" 2>/dev/null || true)"
-    [ -z "$json" ] && return 1
+# Extract the download URL of the first asset matching a grep pattern.
+release_asset_url() {
+    local pattern="$1"
+    printf '%s' "$RELEASE_JSON" \
+        | grep -o '"browser_download_url": *"[^"]*'"$pattern"'"' \
+        | head -n 1 | sed 's/.*"\(https[^"]*\)".*/\1/'
+}
 
-    asset_url="$(printf '%s' "$json" \
-        | grep -o '"browser_download_url": *"[^"]*linux-'"$BINARY_ARCH"'\.tar\.gz"' \
-        | head -n 1 | sed 's/.*"\(https[^"]*\)".*/\1/')"
-    [ -z "$asset_url" ] && return 1
+# The asset pattern for the current family/kind/version. Version is the tag
+# without the leading "v"; tarballs keep the "v" in their filename. With no
+# tag set (latest release) the version part becomes a wildcard, since the
+# release JSON already points at a single release.
+asset_pattern() {
+    local kind="$1"   # native | tarball
+    local ver="${VERSION_TAG#v}"
+    local vpat
+    if [ -z "$ver" ] || [ "$ver" = "latest" ]; then
+        vpat='[^"]*'
+    else
+        vpat="$ver"
+    fi
+    case "$PKG_FAMILY-$kind" in
+        deb-native)      printf 'loaf_%s_%s\\.deb' "$vpat" "$DEB_ARCH" ;;
+        pacman-native)   printf 'loaf-%s-1-%s\\.pkg\\.tar\\.zst' "$vpat" "$BINARY_ARCH" ;;
+        rpm-native)      printf 'loaf-%s-1[^"]*\\.%s\\.rpm' "$vpat" "$BINARY_ARCH" ;;
+        *)               printf 'loaf-v%s-linux-%s\\.tar\\.gz' "$vpat" "$BINARY_ARCH" ;;
+    esac
+}
 
-    echo -e "${CYAN}[*] Downloading $(basename "$asset_url")...${RESET}"
-    curl -fSL --max-time 300 "$asset_url" -o "$dest/loaf-release.tar.gz" || return 1
-    tar -xzf "$dest/loaf-release.tar.gz" -C "$dest" || return 1
+# Download a release asset into $1 and unpack tarballs there.
+# Sets ASSET_FILE (and SRC_ROOT for tarballs). Returns 1 when not found.
+download_asset() {
+    local dest="$1" kind="$2"
+    ASSET_FILE=""
+    SRC_ROOT=""
 
-    # Tarballs extract to loaf-<version>/; locate it
-    SRC_ROOT="$(find "$dest" -maxdepth 3 -type f -path '*/bin/loaf' 2>/dev/null | head -n 1 | xargs -r dirname | xargs -r dirname)"
-    [ -n "$SRC_ROOT" ] && [ -f "$SRC_ROOT/bin/loaf" ]
+    release_json || return 1
+    local url
+    url="$(release_asset_url "$(asset_pattern "$kind")")"
+    [ -z "$url" ] && return 1
+
+    local filename
+    filename="$(basename "$url")"
+    echo -e "${CYAN}[*] Downloading $filename...${RESET}"
+    curl -fSL --max-time 300 "$url" -o "$dest/$filename" >/dev/null 2>&1 || return 1
+    ASSET_FILE="$dest/$filename"
+
+    if [ "$kind" = "tarball" ]; then
+        tar -xzf "$ASSET_FILE" -C "$dest" || return 1
+        # Tarballs extract to loaf-<version>/; locate it
+        SRC_ROOT="$(find "$dest" -maxdepth 3 -type f -path '*/bin/loaf' 2>/dev/null | head -n 1 | xargs -r dirname | xargs -r dirname)"
+        [ -n "$SRC_ROOT" ] && [ -f "$SRC_ROOT/bin/loaf" ] || return 1
+    fi
+    return 0
 }
 
 # Copy binary, desktop entry and icons from an extracted/available source tree
@@ -356,113 +464,70 @@ require_build_tools() {
 }
 
 # ==============================================================================
-# Actions
+# Native package install / remove
 # ==============================================================================
-do_install() {
-    determine_prefix "$@"
-    check_nixos
-    detect_arch
-    choose_version_and_source
-
-    echo -e "\n${CYAN}[*] Preparing installation of Loaf ($VERSION_CHOICE) to $PREFIX...${RESET}"
-
-    mkdir -p "$PREFIX/bin" \
-             "$PREFIX/share/applications" \
-             "$PREFIX/share/icons/hicolor"
-
-    WORKDIR="$(mktemp -d)"
-    trap 'rm -rf "$WORKDIR"' EXIT
-
-    case "$VERSION_CHOICE" in
-        local)
-            if [ -f "./target/release/loaf" ]; then
-                echo -e "${GREEN}[+] Using locally built binary (./target/release/loaf)...${RESET}"
-                install_from_tree "."
-            elif [ -f "./Cargo.toml" ]; then
-                require_build_tools
-                echo -e "${AMBER}[!] Building from local source with cargo...${RESET}"
-                build_from_source "."
+install_native_package() {
+    local pkgfile="$1"
+    echo -e "${CYAN}[*] Installing $(basename "$pkgfile") with the system package manager...${RESET}"
+    case "$PKG_FAMILY" in
+        deb)
+            if command -v apt-get >/dev/null 2>&1; then
+                # apt resolves the Qt and runtime dependencies for us
+                as_root apt-get install -y "$pkgfile" || {
+                    as_root dpkg -i "$pkgfile" || true
+                    as_root apt-get install -f -y
+                }
             else
-                echo -e "${RED}Error: no local build found and this is not a source checkout.${RESET}"
-                exit 1
+                as_root dpkg -i "$pkgfile" || {
+                    echo -e "${RED}Error: dpkg reported missing dependencies and apt-get is unavailable.${RESET}"
+                    exit 1
+                }
             fi
             ;;
-        dev)
-            require_build_tools
-            echo -e "${CYAN}[*] Cloning latest development commit...${RESET}"
-            git clone --depth 1 "$GITHUB/$REPO.git" "$WORKDIR/loaf-dev"
-            echo -e "${CYAN}[*] Building development commit in release mode...${RESET}"
-            build_from_source "$WORKDIR/loaf-dev"
+        pacman)
+            as_root pacman -U --noconfirm "$pkgfile"
             ;;
-        stable|tag|*)
-            if download_release "$WORKDIR"; then
-                install_from_tree "$SRC_ROOT"
+        rpm)
+            if [ "$RPM_FRONTEND" = "zypper" ]; then
+                as_root zypper --non-interactive install "$pkgfile"
             else
-                # No prebuilt asset for this architecture/tag: fall back to local source
-                if [ -f "./target/release/loaf" ]; then
-                    echo -e "${AMBER}[!] No release asset found; using local build instead...${RESET}"
-                    install -m 755 "./target/release/loaf" "$PREFIX/bin/loaf"
-                    if [ -f "./packaging/assets/loaf.desktop" ]; then
-                        install -m 644 "./packaging/assets/loaf.desktop" "$PREFIX/share/applications/loaf.desktop"
-                    fi
-                    if [ -d "./packaging/assets/icons/hicolor" ]; then
-                        cp -r ./packaging/assets/icons/hicolor/. "$PREFIX/share/icons/hicolor/" 2>/dev/null || true
-                    fi
-                elif [ -f "./Cargo.toml" ]; then
-                    require_build_tools
-                    echo -e "${AMBER}[!] No release asset found; building from source instead...${RESET}"
-                    build_from_source "."
-                else
-                    echo -e "${RED}Error: no release asset available for ${BINARY_ARCH} and no source fallback is possible here.${RESET}"
-                    echo -e "See the README for manual installation options (deb / rpm / pacman / Nix)."
-                    exit 1
-                fi
+                as_root dnf install -y "$pkgfile"
+            fi
+            ;;
+        *)
+            echo -e "${RED}Error: no native package manager for this distro.${RESET}"
+            exit 1
+            ;;
+    esac
+}
+
+remove_native_package() {
+    echo -e "${CYAN}[*] Removing the Loaf package with the system package manager...${RESET}"
+    case "$PKG_FAMILY" in
+        deb)     as_root apt-get remove -y loaf ;;
+        pacman)  as_root pacman -R --noconfirm loaf ;;
+        rpm)
+            if [ "$RPM_FRONTEND" = "zypper" ]; then
+                as_root zypper --non-interactive remove loaf
+            else
+                as_root dnf remove -y loaf
             fi
             ;;
     esac
-
-    # Fix Exec path for non-standard prefixes
-    if [ "$PREFIX" != "/usr" ] && [ -f "$PREFIX/share/applications/loaf.desktop" ]; then
-        sed -i "s|^Exec=loaf|Exec=$PREFIX/bin/loaf|" "$PREFIX/share/applications/loaf.desktop"
-    fi
-
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
-    fi
-    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-        gtk-update-icon-cache -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
-    fi
-
-    echo -e "\n${GREEN}[✔] Loaf successfully installed to $PREFIX/bin/loaf!${RESET}"
-    if ! echo ":$PATH:" | grep -q ":$PREFIX/bin:"; then
-        echo -e "Add it to your PATH:  ${CYAN}export PATH=\"$PREFIX/bin:\$PATH\"${RESET}"
-    fi
 }
 
-do_update() {
-    determine_prefix "$@"
-    check_nixos
-
-    if ! check_installed; then
-        echo -e "${AMBER}[!] Loaf is not installed in $PREFIX. Running installation instead...${RESET}"
-        do_install "$@"
-        return
-    fi
-
-    echo -e "${CYAN}[*] Updating Loaf in $PREFIX...${RESET}"
-    VERSION_TAG=""            # updates always target the latest stable release
-    SKIP_VERSION_PROMPT=1
-    do_install "$@"
-    unset SKIP_VERSION_PROMPT
-    echo -e "${GREEN}[✔] Loaf successfully updated!${RESET}"
+# True when Loaf was installed through the native package manager.
+installed_via_pkg_manager() {
+    case "$PKG_FAMILY" in
+        deb)    command -v dpkg >/dev/null 2>&1 && dpkg -s loaf >/dev/null 2>&1 ;;
+        rpm)    command -v rpm >/dev/null 2>&1 && rpm -q loaf >/dev/null 2>&1 ;;
+        pacman) command -v pacman >/dev/null 2>&1 && pacman -Q loaf >/dev/null 2>&1 ;;
+        *)      return 1 ;;
+    esac
 }
 
-do_uninstall() {
-    determine_prefix "$@"
-    check_nixos
-
-    echo -e "${CYAN}[*] Uninstalling Loaf from $PREFIX...${RESET}"
-
+# Remove the tarball-style files from PREFIX.
+remove_tarball_files() {
     rm -f "$PREFIX/bin/loaf"
     rm -f "$PREFIX/share/applications/loaf.desktop"
     find "$PREFIX/share/icons/hicolor" -name "loaf.png" -delete 2>/dev/null || true
@@ -476,6 +541,150 @@ do_uninstall() {
         fi
     fi
     rmdir "$PREFIX/share/icons" "$PREFIX/share/applications" "$PREFIX/share" "$PREFIX/bin" 2>/dev/null || true
+}
+
+# ==============================================================================
+# Actions
+# ==============================================================================
+do_install() {
+    determine_prefix "$@"
+    check_nixos
+    detect_arch
+    detect_pkg_family
+    choose_version_and_source
+
+    echo -e "\n${CYAN}[*] Preparing Loaf ($SOURCE_KIND) for $OS_NAME...${RESET}"
+
+    WORKDIR="$(mktemp -d)"
+    trap 'rm -rf "$WORKDIR"' EXIT
+
+    # Prepare the target dirs once for tarball-style installs
+    prepare_prefix_dirs() {
+        mkdir -p "$PREFIX/bin" "$PREFIX/share/applications" "$PREFIX/share/icons/hicolor"
+    }
+
+    # Decide between the native package and the tarball for stable/tag installs
+    local kind="$SOURCE_KIND"
+    if [ "$kind" = "stable" ] || [ "$kind" = "tag" ]; then
+        if [ "$PKG_FAMILY" = "none" ]; then
+            kind="tarball"
+            echo -e "${MUTED}(no native package format known for this distro; using the universal tarball)${RESET}"
+        else
+            kind="native"
+        fi
+    fi
+
+    case "$SOURCE_KIND" in
+        local)
+            if [ -f "./target/release/loaf" ]; then
+                echo -e "${GREEN}[+] Using locally built binary (./target/release/loaf)...${RESET}"
+                prepare_prefix_dirs
+                install_from_tree "."
+            elif [ -f "./Cargo.toml" ]; then
+                require_build_tools
+                echo -e "${AMBER}[!] Building from local source with cargo...${RESET}"
+                prepare_prefix_dirs
+                build_from_source "."
+            else
+                echo -e "${RED}Error: no local build found and this is not a source checkout.${RESET}"
+                exit 1
+            fi
+            ;;
+        dev)
+            require_build_tools
+            echo -e "${CYAN}[*] Cloning latest development commit...${RESET}"
+            git clone --depth 1 "$GITHUB/$REPO.git" "$WORKDIR/loaf-dev"
+            echo -e "${CYAN}[*] Building development commit in release mode...${RESET}"
+            prepare_prefix_dirs
+            build_from_source "$WORKDIR/loaf-dev"
+            ;;
+        stable|tag|*)
+            local installed=0
+            if [ "$kind" = "native" ] && download_asset "$WORKDIR" native; then
+                install_native_package "$ASSET_FILE"
+                installed=1
+            elif [ "$kind" = "native" ]; then
+                echo -e "${AMBER}[!] No native package asset for $OS_NAME / $BINARY_ARCH in this release; trying the tarball...${RESET}"
+            fi
+            if [ "$installed" -eq 0 ] && download_asset "$WORKDIR" tarball; then
+                prepare_prefix_dirs
+                install_from_tree "$SRC_ROOT"
+                installed=1
+            fi
+            if [ "$installed" -eq 0 ]; then
+                # Last resort when we are sitting in a source checkout
+                if [ -z "${VERSION_TAG:-}" ] && [ -f "./target/release/loaf" ]; then
+                    echo -e "${AMBER}[!] No release asset found; using the local build instead...${RESET}"
+                    prepare_prefix_dirs
+                    install_from_tree "."
+                elif [ -f "./Cargo.toml" ]; then
+                    require_build_tools
+                    echo -e "${AMBER}[!] No release asset found; building from source instead...${RESET}"
+                    prepare_prefix_dirs
+                    build_from_source "."
+                else
+                    echo -e "${RED}Error: no release asset available for ${BINARY_ARCH} and no source fallback is possible here.${RESET}"
+                    echo -e "See the README for manual installation options (deb / rpm / pacman / Nix)."
+                    exit 1
+                fi
+            fi
+            ;;
+    esac
+
+    # Desktop/icon cache refresh and Exec fix apply to tarball installs only;
+    # native packages ship their own integration.
+    if ! installed_via_pkg_manager; then
+        if [ "$PREFIX" != "/usr" ] && [ -f "$PREFIX/share/applications/loaf.desktop" ]; then
+            sed -i "s|^Exec=loaf|Exec=$PREFIX/bin/loaf|" "$PREFIX/share/applications/loaf.desktop"
+        fi
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+        fi
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
+        fi
+    fi
+
+    echo -e "\n${GREEN}[✔] Loaf installed successfully!${RESET}"
+    echo -e "Run it with: ${CYAN}loaf${RESET}"
+    if ! installed_via_pkg_manager && ! echo ":$PATH:" | grep -q ":$PREFIX/bin:"; then
+        echo -e "Add it to your PATH:  ${CYAN}export PATH=\"$PREFIX/bin:\$PATH\"${RESET}"
+    fi
+}
+
+do_update() {
+    determine_prefix "$@"
+    check_nixos
+    detect_pkg_family
+
+    if ! check_installed; then
+        echo -e "${AMBER}[!] Loaf is not installed. Running installation instead...${RESET}"
+        do_install "$@"
+        return
+    fi
+
+    echo -e "${CYAN}[*] Updating Loaf...${RESET}"
+    VERSION_TAG=""
+    SKIP_VERSION_PROMPT=1
+    do_install "$@"
+    unset SKIP_VERSION_PROMPT
+    echo -e "${GREEN}[✔] Loaf updated successfully!${RESET}"
+}
+
+do_uninstall() {
+    determine_prefix "$@"
+    check_nixos
+    detect_arch
+    detect_pkg_family
+
+    echo -e "${CYAN}[*] Uninstalling Loaf...${RESET}"
+
+    if installed_via_pkg_manager; then
+        remove_native_package
+    fi
+    if [ -f "$PREFIX/bin/loaf" ] || [ -f "$PREFIX/share/applications/loaf.desktop" ]; then
+        remove_tarball_files
+    fi
 
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
@@ -487,17 +696,18 @@ do_uninstall() {
 do_try() {
     check_nixos
     detect_arch
+    detect_pkg_family
+    VERSION_TAG=""
     echo -e "\n${CYAN}[*] Preparing a temporary, ephemeral run of Loaf...${RESET}"
 
     WORKDIR="$(mktemp -d)"
     trap 'rm -rf "$WORKDIR"' EXIT
 
     run_bin=""
-    VERSION_TAG=""
     if [ -f "./target/release/loaf" ]; then
         echo -e "${GREEN}[+] Using local workspace binary...${RESET}"
         run_bin="./target/release/loaf"
-    elif download_release "$WORKDIR"; then
+    elif download_asset "$WORKDIR" tarball; then
         run_bin="$SRC_ROOT/bin/loaf"
     elif [ -f "./Cargo.toml" ] && command -v cargo >/dev/null 2>&1; then
         echo -e "${AMBER}[!] Building temporary binary...${RESET}"
@@ -517,12 +727,19 @@ interactive_menu() {
     detect_os
     detect_tty
     determine_prefix
+    detect_arch
+    detect_pkg_family
     echo -e "Detected OS: ${CYAN}${OS_NAME}${RESET} (ID: ${OS_ID})"
-    echo -e "Target Arch: ${CYAN}$(uname -m)${RESET}"
+    echo -e "Target Arch: ${CYAN}$BINARY_ARCH${RESET}"
+    if [ "$PKG_FAMILY" != "none" ]; then
+        echo -e "Native packages: ${CYAN}$(pkg_family_label)${RESET}"
+    else
+        echo -e "Native packages: ${MUTED}none (tarball install)${RESET}"
+    fi
     echo ""
 
     if check_installed; then
-        echo -e "Status: ${GREEN}Loaf is already installed${RESET} at $PREFIX/bin/loaf"
+        echo -e "Status: ${GREEN}Loaf is already installed${RESET}"
     else
         echo -e "Status: ${AMBER}Loaf is not installed${RESET}"
     fi
@@ -548,9 +765,9 @@ main() {
     detect_tty
 
     case "$1" in
-        --try|try)        shift; do_try "$@" ;;
-        --install|install) shift; do_install "$@" ;;
-        --update|update)   shift; do_update "$@" ;;
+        --try|try)           shift; do_try "$@" ;;
+        --install|install)   shift; do_install "$@" ;;
+        --update|update)     shift; do_update "$@" ;;
         --uninstall|uninstall) shift; do_uninstall "$@" ;;
         --help|-h)
             print_banner
@@ -558,14 +775,14 @@ main() {
             echo ""
             echo "Commands:"
             echo "  try          Try Loaf ephemerally without installing"
-            echo "  install      Install Loaf"
+            echo "  install      Install Loaf (native package for your distro when available)"
             echo "  update       Update Loaf to the latest stable release"
             echo "  uninstall    Uninstall Loaf"
             echo "  --help       Show this help message"
             echo ""
             echo "Environment variables:"
-            echo "  LOAF_OS_SPOOF  Spoof OS ID (e.g. LOAF_OS_SPOOF=nixos) for testing"
-            echo "  PREFIX         Install prefix (default: \$HOME/.local)"
+            echo "  LOAF_OS_SPOOF  Spoof OS ID (e.g. LOAF_OS_SPOOF=ubuntu) for testing"
+            echo "  PREFIX         Install prefix for tarball installs (default: \$HOME/.local)"
             ;;
         "")
             interactive_menu
