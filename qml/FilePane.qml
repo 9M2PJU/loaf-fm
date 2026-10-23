@@ -1340,7 +1340,7 @@ Item {
                 // Empty space below the rows: deselect / background menu.
                 footer: Item {
                     width: listView.width
-                    height: Math.max(40, listView.height - listView.contentHeight + 40)
+                    height: 80
                     MouseArea {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
