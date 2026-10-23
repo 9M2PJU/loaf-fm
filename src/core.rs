@@ -126,6 +126,8 @@ pub mod qobject {
         #[qinvokable]
         fn open_with_apps(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
+        fn open_with_data(self: &LoafCore, path: &QString) -> QString;
+        #[qinvokable]
         fn all_open_with_apps(self: &LoafCore) -> QString;
         #[qinvokable]
         fn recent_open_with_apps(self: &LoafCore) -> QString;
@@ -210,6 +212,7 @@ use crate::{apps, drives, icons, info, native, state, theme, trash, util, watche
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, CxxQtType, Threading};
 use cxx_qt_lib::QString;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1035,18 +1038,17 @@ impl qobject::LoafCore {
         });
     }
 
+    fn app_entry(app: &apps::DesktopApp, theme_name: &str) -> serde_json::Value {
+        let icon = if app.icon.starts_with('/') {
+            format!("file://{}", trash::encode_path(Path::new(&app.icon)))
+        } else {
+            icons::resolve(theme_name, &app.icon, 32)
+        };
+        serde_json::json!({"id": app.id, "name": app.name, "icon": icon})
+    }
+
     fn app_entries(list: Vec<apps::DesktopApp>, theme_name: &str) -> QString {
-        let v: Vec<serde_json::Value> = list
-            .into_iter()
-            .map(|a| {
-                let icon = if a.icon.starts_with('/') {
-                    format!("file://{}", trash::encode_path(Path::new(&a.icon)))
-                } else {
-                    icons::resolve(theme_name, &a.icon, 32)
-                };
-                serde_json::json!({"id": a.id, "name": a.name, "icon": icon})
-            })
-            .collect();
+        let v: Vec<serde_json::Value> = list.iter().map(|a| Self::app_entry(a, theme_name)).collect();
         q(&serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
     }
 
@@ -1054,6 +1056,46 @@ impl qobject::LoafCore {
         let p = PathBuf::from(path.to_string());
         let mime = if p.is_dir() { "inode/directory".to_string() } else { native::mime_type(&p, true) };
         Self::app_entries(apps::for_mime(&mime), &self.icon_theme().to_string())
+    }
+
+    pub fn open_with_data(&self, path: &QString) -> QString {
+        let p = PathBuf::from(path.to_string());
+        let mime = if p.is_dir() { "inode/directory".to_string() } else { native::mime_type(&p, true) };
+        let theme_name = self.icon_theme().to_string();
+        let installed = apps::all();
+        let default_id = apps::default_for_in(&installed, &mime).map(|a| a.id).unwrap_or_default();
+
+        let mut recommended: Vec<&apps::DesktopApp> =
+            installed.iter().filter(|a| a.mimes.iter().any(|m| apps::mime_covers(m, &mime))).collect();
+        if let Some(pos) = recommended.iter().position(|a| a.id == default_id) {
+            let first = recommended.remove(pos);
+            recommended.insert(0, first);
+        }
+
+        let recent_ids: Vec<String> = state::get("recentOpenApps")
+            .unwrap_or_default()
+            .split('\u{1}')
+            .filter(|s| !s.is_empty() && !s.starts_with("cmd:"))
+            .map(String::from)
+            .collect();
+        let recent: Vec<&apps::DesktopApp> =
+            recent_ids.iter().filter_map(|id| installed.iter().find(|a| &a.id == id)).collect();
+
+        let mut used: HashSet<&str> = HashSet::new();
+        for app in recent.iter().chain(recommended.iter()) {
+            used.insert(app.id.as_str());
+        }
+        let others: Vec<&apps::DesktopApp> =
+            installed.iter().filter(|a| !a.no_display && !used.contains(a.id.as_str())).collect();
+
+        let payload = serde_json::json!({
+            "mime": mime,
+            "defaultId": default_id,
+            "recommended": recommended.iter().map(|a| Self::app_entry(a, &theme_name)).collect::<Vec<_>>(),
+            "recent": recent.iter().map(|a| Self::app_entry(a, &theme_name)).collect::<Vec<_>>(),
+            "others": others.iter().map(|a| Self::app_entry(a, &theme_name)).collect::<Vec<_>>(),
+        });
+        q(&serde_json::to_string(&payload).unwrap_or_else(|_| "{}".into()))
     }
 
     pub fn all_open_with_apps(&self) -> QString {

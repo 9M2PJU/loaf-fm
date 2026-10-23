@@ -150,6 +150,14 @@ LoafPopup {
 
     // ---- activation ---------------------------------------------------------
 
+    function resolveSubmenu(entry) {
+        if (!entry)
+            return null;
+        if (typeof entry.submenu === "function")
+            entry.submenu = entry.submenu();
+        return entry.submenu;
+    }
+
     function activate(index) {
         var opts = menu.model;
         if (!opts || index < 0 || index >= opts.length)
@@ -157,7 +165,8 @@ LoafPopup {
         var it = opts[index];
         if (!it || it.enabled === false)
             return;
-        if (it.submenu && it.submenu.length > 0) {
+        var sub = menu.resolveSubmenu(it);
+        if (sub && sub.length > 0) {
             menu.openSubmenuAt(index);
             return;
         }
@@ -232,7 +241,7 @@ LoafPopup {
         var opts = menu.model;
         if (!opts || !opts[index])
             return;
-        var sub = opts[index].submenu;
+        var sub = menu.resolveSubmenu(opts[index]);
         if (!sub || sub.length === 0)
             return;
         var wrap = menu.rowWrapperFor(index);
@@ -372,7 +381,12 @@ LoafPopup {
                 enabled: rowWrap.entry ? rowWrap.entry.enabled !== false : true
                 checkable: rowWrap.entry ? rowWrap.entry.checkable === true : false
                 checked: rowWrap.entry ? rowWrap.entry.checked === true : false
-                hasSubmenu: rowWrap.entry && rowWrap.entry.submenu ? rowWrap.entry.submenu.length > 0 : false
+                hasSubmenu: {
+                    if (!rowWrap.entry || !rowWrap.entry.submenu)
+                        return false;
+                    return typeof rowWrap.entry.submenu === "function"
+                        || rowWrap.entry.submenu.length > 0;
+                }
                 highlighted: menu.highlightIndex === rowWrap.rowIndex
 
                 onTriggered: menu.activate(rowWrap.rowIndex)

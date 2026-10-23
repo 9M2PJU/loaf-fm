@@ -247,10 +247,13 @@ fn group_values(content: &str, group: &str, mime: &str) -> Vec<String> {
 /// `[Default Applications]`, then `[Added Associations]`, then any app that
 /// declares the type. Removed associations are skipped.
 pub fn default_for(mime: &str) -> Option<DesktopApp> {
+    default_for_in(&all(), mime)
+}
+
+pub fn default_for_in(apps: &[DesktopApp], mime: &str) -> Option<DesktopApp> {
     if mime.is_empty() {
         return None;
     }
-    let apps = all();
     let installed = |id: &str| {
         let id = id.strip_suffix(".desktop").unwrap_or(id);
         apps.iter().find(|a| a.id == id).cloned()
@@ -277,14 +280,17 @@ pub fn default_for(mime: &str) -> Option<DesktopApp> {
             }
         }
     }
-    apps.into_iter()
+    apps.iter()
         .find(|a| !removed.contains(&a.id) && a.mimes.iter().any(|m| mime_covers(m, mime)))
+        .cloned()
 }
 
 /// Apps that declare support for `mime`, default first.
 pub fn for_mime(mime: &str) -> Vec<DesktopApp> {
-    let mut list: Vec<DesktopApp> = all().into_iter().filter(|a| a.mimes.iter().any(|m| mime_covers(m, mime))).collect();
-    if let Some(def) = default_for(mime) {
+    let apps = all();
+    let mut list: Vec<DesktopApp> =
+        apps.iter().filter(|a| a.mimes.iter().any(|m| mime_covers(m, mime))).cloned().collect();
+    if let Some(def) = default_for_in(&apps, mime) {
         if let Some(pos) = list.iter().position(|a| a.id == def.id) {
             let d = list.remove(pos);
             list.insert(0, d);

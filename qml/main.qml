@@ -1868,39 +1868,88 @@ ApplicationWindow {
         return out;
     }
 
-    function openWithMenu(paths) {
-        var path = paths[0];
-        var recommended = JSON.parse(core.open_with_apps(path) || "[]");
-        var recent = JSON.parse(core.recent_open_with_apps() || "[]");
-        var defaultId = core.default_app_for(path);
+    function openWithData(paths) {
+        try {
+            return JSON.parse(core.open_with_data(paths[0]) || "{}");
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function appRow(app, paths, defaultId, icon) {
+        return {
+            text: app.name,
+            icon: icon || "",
+            iconUrl: icon ? "" : (app.icon || ""),
+            checkable: app.id === defaultId,
+            checked: app.id === defaultId,
+            action: function() { core.open_with_app(JSON.stringify(paths), app.id); }
+        };
+    }
+
+    function openWithMenu(paths, data) {
+        var recommended = data.recommended || [];
+        var recent = data.recent || [];
+        var defaultId = data.defaultId || "";
         var used = {};
         var sub = [];
-        function row(app, icon) {
-            return { text: app.name, icon: icon || "package", iconUrl: icon ? "" : (app.icon || ""), checkable: app.id === defaultId, checked: app.id === defaultId,
-                     action: function() { core.open_with_app(JSON.stringify(paths), app.id); } };
+        for (var r = 0; r < recent.length; ++r) {
+            used[recent[r].id] = true;
+            sub.push(appRow(recent[r], paths, defaultId, "clock-counter-clockwise"));
         }
-        var recentFor = recent.filter(function(r) { return recommended.some(function(a) { return a.id === r.id; }); });
-        for (var r = 0; r < recentFor.length; ++r) {
-            used[recentFor[r].id] = true;
-            sub.push(row(recentFor[r], "clock-counter-clockwise"));
-        }
-        var first = true;
+        var suggested = [];
         for (var i = 0; i < recommended.length; ++i) {
             if (used[recommended[i].id])
                 continue;
             used[recommended[i].id] = true;
-            var e = row(recommended[i]);
-            if (first && sub.length > 0)
-                e.separatorBefore = true;
-            first = false;
-            sub.push(e);
+            suggested.push(recommended[i]);
         }
-        var others = JSON.parse(core.all_open_with_apps() || "[]")
-            .filter(function(a) { return !used[a.id]; })
-            .map(function(a) { return row(a); });
-        if (others.length > 0)
-            sub.push({ text: qsTr("Other Applications"), icon: "list", separatorBefore: true, submenu: others });
-        sub.push({ text: qsTr("Run Custom Command…"), icon: "terminal", separatorBefore: sub.length > 0, action: function() { commandModal.showFor(path); } });
+        if (suggested.length > 0) {
+            if (sub.length > 0)
+                sub.push({ text: qsTr("Suggested for this file"), icon: "sparkle", separatorBefore: true, enabled: false });
+            for (var s = 0; s < suggested.length; ++s)
+                sub.push(appRow(suggested[s], paths, defaultId));
+        }
+        var others = data.others || [];
+        if (others.length > 0) {
+            sub.push({ text: qsTr("Other Applications…"), icon: "list", separatorBefore: sub.length > 0, submenu: function() {
+                var out = [];
+                for (var o = 0; o < others.length; ++o)
+                    out.push(appRow(others[o], paths, defaultId));
+                return out;
+            } });
+        }
+        sub.push({ text: qsTr("Run Custom Command…"), icon: "terminal", separatorBefore: sub.length > 0, action: function() { commandModal.showFor(paths[0]); } });
+        return sub;
+    }
+
+    function defaultAppRow(app, paths, defaultId, icon) {
+        return {
+            text: app.name,
+            icon: icon || "",
+            iconUrl: icon ? "" : (app.icon || ""),
+            checkable: true,
+            checked: app.id === defaultId,
+            action: function() { core.set_default_app(paths[0], app.id); }
+        };
+    }
+
+    function setDefaultMenu(paths, data) {
+        var recommended = data.recommended || [];
+        var recent = data.recent || [];
+        var defaultId = data.defaultId || "";
+        var used = {};
+        var sub = [];
+        for (var r = 0; r < recent.length; ++r) {
+            used[recent[r].id] = true;
+            sub.push(defaultAppRow(recent[r], paths, defaultId, "clock-counter-clockwise"));
+        }
+        for (var i = 0; i < recommended.length; ++i) {
+            if (used[recommended[i].id])
+                continue;
+            used[recommended[i].id] = true;
+            sub.push(defaultAppRow(recommended[i], paths, defaultId));
+        }
         return sub;
     }
 
@@ -1976,7 +2025,13 @@ ApplicationWindow {
                 pane.pendingSelect = [target];
             } });
         if (!item.is_dir && !inArchive) {
-            m.push({ text: qsTr("Open With"), icon: "app-window", itemKey: "open_with", submenu: openWithMenu(paths) });
+            var openData = openWithData(paths);
+            var openSub = openWithMenu(paths, openData);
+            if (openSub.length > 0)
+                m.push({ text: qsTr("Open With"), icon: "app-window", itemKey: "open_with", submenu: openSub });
+            var defSub = setDefaultMenu(paths, openData);
+            if (defSub.length > 0)
+                m.push({ text: qsTr("Set Default Application"), icon: "check-square", itemKey: "set_default", submenu: defSub });
             if (core.is_archive_file(item.path)) {
                 m.push({ text: qsTr("Browse Archive"), icon: "folder-open", itemKey: "browse_archive", action: function() { pane.engine.set_path("archive://" + item.path + "#"); } });
                 m.push({ text: qsTr("Extract Here"), icon: "archive", itemKey: "extract", action: function() { core.extract(item.path, false, ""); } });
