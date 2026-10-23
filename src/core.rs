@@ -460,15 +460,22 @@ fn build_places(hostname: &str, device_type: &str) -> Vec<serde_json::Value> {
     items.push(serde_json::json!({"id": "pc", "kind": "pc", "name": if hostname.is_empty() { "This PC" } else { hostname }, "path": "", "icon": pc_icon, "system_icon": "computer-symbolic"}));
     items.push(serde_json::json!({"id": "recent", "kind": "recent", "name": "Recent", "path": "recent:///", "icon": "clock", "system_icon": "document-open-recent-symbolic"}));
     items.push(serde_json::json!({"id": "starred", "kind": "starred", "name": "Starred", "path": "starred:///", "icon": "star", "system_icon": "starred-symbolic"}));
+    // Paths already shown by a built-in place, so a GTK bookmark pointing at
+    // the same folder (e.g. ~/Projects) is not listed twice.
+    let mut shown_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
     for p in xdg::default_places() {
         let (name, path) = cfg.overrides.get(&p.id).cloned().unwrap_or((p.name.clone(), p.path.clone()));
         if !Path::new(&path).is_dir() {
             continue; // issue #22: only show folders that exist
         }
+        shown_paths.insert(path.clone());
         items.push(serde_json::json!({"id": p.id, "kind": "place", "name": name, "path": path, "icon": p.icon, "system_icon": format!("{}-symbolic", p.system_icon)}));
     }
     for b in xdg::bookmarks() {
         let Some(path) = b.path() else { continue };
+        if !shown_paths.insert(path.to_string_lossy().to_string()) {
+            continue;
+        }
         let exists = path.is_dir();
         items.push(serde_json::json!({
             "id": format!("bookmark:{}", path.to_string_lossy()),
