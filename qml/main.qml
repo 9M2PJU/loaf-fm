@@ -1913,6 +1913,26 @@ ApplicationWindow {
         return sub;
     }
 
+    function sortMenuItems(items) {
+        var savedOrder = [];
+        try {
+            var raw = core.get_setting("contextMenuOrder");
+            if (raw && raw.length > 0) savedOrder = JSON.parse(raw);
+        } catch (e) {}
+        if (savedOrder.length === 0)
+            return items;
+        var copy = items.slice();
+        copy.sort(function(a, b) {
+            var ia = a.itemKey ? savedOrder.indexOf(a.itemKey) : -1;
+            var ib = b.itemKey ? savedOrder.indexOf(b.itemKey) : -1;
+            if (ia === -1 && ib === -1) return 0;
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+        });
+        return copy;
+    }
+
     function openItemMenu(pane, row, mx, my) {
         setActivePane(pane);
         var paths = pane.selectedPaths();
@@ -1938,7 +1958,7 @@ ApplicationWindow {
         if (item.is_dir && !inArchive)
             m.push({ text: qsTr("Open in New Tab"), icon: "tabs", itemKey: "new_tab", action: function() { for (var i = 0; i < paths.length; ++i) window.newTab(paths[i]); } });
         if ((kind === "search" || kind === "recent" || kind === "starred") && item.parent_path)
-            m.push({ text: qsTr("Open Containing Folder"), icon: "folder-open", action: function() {
+            m.push({ text: qsTr("Open Containing Folder"), icon: "folder-open", itemKey: "open_containing", action: function() {
                 var target = item.path;
                 searchInput.text = "";
                 pane.engine.set_path(item.parent_path);
@@ -1947,7 +1967,7 @@ ApplicationWindow {
         if (!item.is_dir && !inArchive) {
             m.push({ text: qsTr("Open With"), icon: "app-window", itemKey: "open_with", submenu: openWithMenu(paths) });
             if (core.is_archive_file(item.path)) {
-                m.push({ text: qsTr("Browse Archive"), icon: "folder-open", action: function() { pane.engine.set_path("archive://" + item.path + "#"); } });
+                m.push({ text: qsTr("Browse Archive"), icon: "folder-open", itemKey: "browse_archive", action: function() { pane.engine.set_path("archive://" + item.path + "#"); } });
                 m.push({ text: qsTr("Extract Here"), icon: "archive", itemKey: "extract", action: function() { core.extract(item.path, false, ""); } });
                 m.push({ text: qsTr("Extract to Folder"), icon: "folder-plus", itemKey: "extract", action: function() { core.extract(item.path, true, ""); } });
             }
@@ -1967,8 +1987,8 @@ ApplicationWindow {
             else
                 m.push({ text: qsTr("Rename %1 Items…").arg(paths.length), icon: "pencil-simple", shortcut: "F2", itemKey: "rename", action: function() { batchRename.showFor(pane.selectedItems()); } });
             if (kind === "dir") {
-                m.push({ text: qsTr("Duplicate"), icon: "copy-simple", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "copy", "rename"); } });
-                m.push({ text: qsTr("Make Link"), icon: "link", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "link", "rename"); } });
+                m.push({ text: qsTr("Duplicate"), icon: "copy-simple", itemKey: "duplicate", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "copy", "rename"); } });
+                m.push({ text: qsTr("Make Link"), icon: "link", itemKey: "make_link", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "link", "rename"); } });
             }
             m.push({ text: qsTr("Compress"), icon: "file-archive", itemKey: "compress", submenu: compressSubmenu(paths) });
 
@@ -1985,11 +2005,11 @@ ApplicationWindow {
             }
             var scripts = JSON.parse(core.scripts_json() || "[]");
             if (scripts.length > 0)
-                m.push({ text: qsTr("Scripts"), icon: "scroll", submenu: menuFromTree(scripts, function(script) {
+                m.push({ text: qsTr("Scripts"), icon: "scroll", itemKey: "scripts", submenu: menuFromTree(scripts, function(script) {
                     core.run_script(script, kind === "dir" ? pane.engine.current_path : item.parent_path, JSON.stringify(paths));
                 }) });
             if (!native.isAdmin && item.is_dir && single)
-                m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", action: function() { core.open_as_admin(item.path); } });
+                m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", itemKey: "admin", action: function() { core.open_as_admin(item.path); } });
 
             m.push({ text: qsTr("Move to Trash"), icon: "trash", shortcut: "Del", danger: true, itemKey: "delete", separatorBefore: true, action: function() { window.trashSelection(); } });
             m.push({ text: qsTr("Delete Permanently"), icon: "x-circle", shortcut: "Shift+Del", itemKey: "permanent_delete", danger: true, action: function() { window.deleteSelection(); } });
@@ -2007,7 +2027,7 @@ ApplicationWindow {
             }
             return true;
         }
-        contextMenu.model = m.filter(shouldIncludeItem);
+        contextMenu.model = sortMenuItems(m.filter(shouldIncludeItem));
         contextMenu.openAt(mx, my);
     }
 
@@ -2054,9 +2074,9 @@ ApplicationWindow {
             } });
             var scripts = JSON.parse(core.scripts_json() || "[]");
             if (scripts.length > 0)
-                m.push({ text: qsTr("Scripts"), icon: "scroll", submenu: menuFromTree(scripts, function(script) { core.run_script(script, e.current_path, "[]"); }) });
+                m.push({ text: qsTr("Scripts"), icon: "scroll", itemKey: "scripts", submenu: menuFromTree(scripts, function(script) { core.run_script(script, e.current_path, "[]"); }) });
             if (!native.isAdmin)
-                m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", action: function() { core.open_as_admin(e.current_path); } });
+                m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", itemKey: "admin", action: function() { core.open_as_admin(e.current_path); } });
             m.push({ text: qsTr("Properties"), icon: "info", itemKey: "properties", separatorBefore: true, action: function() { window.showProperties([e.current_path]); } });
         }
 
@@ -2071,7 +2091,7 @@ ApplicationWindow {
             }
             return true;
         }
-        contextMenu.model = m.filter(shouldIncludeEmpty);
+        contextMenu.model = sortMenuItems(m.filter(shouldIncludeEmpty));
         contextMenu.openAt(mx, my);
     }
 
@@ -2725,10 +2745,11 @@ ApplicationWindow {
         title: qsTr("Customize Context Menu Actions")
         dialogWidth: 440
 
-        readonly property var allActions: [
+        readonly property var baseActions: [
             { id: "open", name: qsTr("Open"), icon: "arrow-square-out", shortcut: "Enter" },
             { id: "new_tab", name: qsTr("Open in New Tab"), icon: "tabs", shortcut: "" },
             { id: "open_with", name: qsTr("Open With"), icon: "app-window", shortcut: "" },
+            { id: "open_containing", name: qsTr("Open Containing Folder"), icon: "folder-open", shortcut: "" },
             { id: "quick_look", name: qsTr("Quick Look"), icon: "eye", shortcut: "Space" },
             { id: "terminal", name: qsTr("Open in Terminal"), icon: "terminal", shortcut: "" },
             { id: "cut", name: qsTr("Cut"), icon: "scissors", shortcut: "Ctrl+X" },
@@ -2736,42 +2757,147 @@ ApplicationWindow {
             { id: "copy_path", name: qsTr("Copy Path"), icon: "copy-simple", shortcut: "Ctrl+Shift+C" },
             { id: "paste", name: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V" },
             { id: "rename", name: qsTr("Rename"), icon: "pencil-simple", shortcut: "F2" },
+            { id: "duplicate", name: qsTr("Duplicate"), icon: "copy-simple", shortcut: "" },
+            { id: "make_link", name: qsTr("Make Link"), icon: "link", shortcut: "" },
             { id: "compress", name: qsTr("Compress"), icon: "file-archive", shortcut: "" },
             { id: "extract", name: qsTr("Extract"), icon: "archive", shortcut: "" },
+            { id: "browse_archive", name: qsTr("Browse Archive"), icon: "folder-open", shortcut: "" },
             { id: "star", name: qsTr("Star / Unstar"), icon: "star", shortcut: "" },
-            { id: "pin", name: qsTr("Add / Remove from Sidebar"), icon: "push-pin", shortcut: "" },
+            { id: "pin", name: qsTr("Add / Remove from Sidebar"), icon: "push-pin", shortcut: "Ctrl+D" },
+            { id: "scripts", name: qsTr("Scripts"), icon: "scroll", shortcut: "" },
+            { id: "admin", name: qsTr("Open as Administrator"), icon: "shield-check", shortcut: "" },
             { id: "delete", name: qsTr("Move to Trash"), icon: "trash", shortcut: "Del" },
             { id: "permanent_delete", name: qsTr("Delete Permanently"), icon: "x-circle", shortcut: "Shift+Del" },
-            { id: "properties", name: qsTr("Properties"), icon: "info", shortcut: "Alt+Enter" }
+            { id: "properties", name: qsTr("Properties"), icon: "info", shortcut: "Alt+Enter" },
+            { id: "new", name: qsTr("New…"), icon: "plus-circle", shortcut: "" },
+            { id: "select_all", name: qsTr("Select All"), icon: "selection-all", shortcut: "Ctrl+A" },
+            { id: "select_pattern", name: qsTr("Select by Pattern…"), icon: "selection", shortcut: "Ctrl+S" }
         ]
 
+        property var orderedActions: []
+
+        function refreshActions() {
+            var savedOrder = [];
+            try {
+                var raw = core.get_setting("contextMenuOrder");
+                if (raw && raw.length > 0) savedOrder = JSON.parse(raw);
+            } catch (e) {}
+
+            var list = baseActions.slice();
+            if (savedOrder.length > 0) {
+                list.sort(function(a, b) {
+                    var ia = savedOrder.indexOf(a.id);
+                    var ib = savedOrder.indexOf(b.id);
+                    if (ia === -1 && ib === -1) return 0;
+                    if (ia === -1) return 1;
+                    if (ib === -1) return -1;
+                    return ia - ib;
+                });
+            }
+            orderedActions = list;
+        }
+
+        onOpened: refreshActions()
+
+        function moveAction(fromIdx, toIdx) {
+            if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= orderedActions.length || toIdx >= orderedActions.length)
+                return;
+            var list = orderedActions.slice();
+            var item = list.splice(fromIdx, 1)[0];
+            list.splice(toIdx, 0, item);
+            orderedActions = list;
+            var orderIds = list.map(function(x) { return x.id; });
+            core.set_setting("contextMenuOrder", JSON.stringify(orderIds));
+        }
+
         ListView {
+            id: customizeContextMenuList
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(380, contentHeight)
             clip: true
-            model: customizeContextMenuDialog.allActions
+            model: customizeContextMenuDialog.orderedActions
             ScrollBar.vertical: ScrollBar {}
-            spacing: 6
+            spacing: 4
 
-            delegate: RowLayout {
+            delegate: Rectangle {
+                id: actionRow
                 required property var modelData
+                required property int index
                 width: ListView.view.width
-                spacing: 10
+                height: 40
+                radius: theme.radiusM
+                color: actionDragHandle.containsMouse ? theme.hoverOverlay : "transparent"
 
-                LoafIcon { name: modelData.icon; size: 16; color: theme.primary }
-                Text { text: modelData.name; color: theme.textMain; font.pixelSize: theme.fs(13); Layout.fillWidth: true }
-                Text { visible: modelData.shortcut.length > 0; text: modelData.shortcut; color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                readonly property bool isHidden: !!(theme.disabledMenuItems && theme.disabledMenuItems[modelData.id])
 
-                LoafSwitch {
-                    checked: !theme.disabledMenuItems || !theme.disabledMenuItems[modelData.id]
-                    onToggled: function(c) {
-                        var map = Object.assign({}, theme.disabledMenuItems || {});
-                        if (c) {
-                            delete map[modelData.id];
-                        } else {
-                            map[modelData.id] = true;
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    spacing: 10
+
+                    // Drag Indicator
+                    Item {
+                        width: 20; height: 32
+                        LoafIcon {
+                            anchors.centerIn: parent
+                            name: "dots-six-vertical"
+                            size: 16
+                            color: actionDragHandle.containsMouse ? theme.primary : theme.outline
                         }
-                        theme.disabledMenuItems = map;
+                        MouseArea {
+                            id: actionDragHandle
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeVerCursor
+                            onPositionChanged: function(mouse) {
+                                if (pressed) {
+                                    var pt = mapToItem(customizeContextMenuList.contentItem, mouse.x, mouse.y);
+                                    var targetIdx = Math.max(0, Math.min(customizeContextMenuDialog.orderedActions.length - 1, Math.floor(pt.y / 44)));
+                                    if (targetIdx !== actionRow.index) {
+                                        customizeContextMenuDialog.moveAction(actionRow.index, targetIdx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LoafIcon {
+                        name: actionRow.modelData.icon || "circle"
+                        size: 16
+                        color: actionRow.isHidden ? theme.outline : theme.primary
+                    }
+
+                    Text {
+                        text: actionRow.modelData.name || ""
+                        color: actionRow.isHidden ? theme.textMuted : theme.textMain
+                        font.pixelSize: theme.fs(13)
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        opacity: actionRow.isHidden ? 0.55 : 1.0
+                    }
+
+                    Text {
+                        visible: actionRow.modelData.shortcut && actionRow.modelData.shortcut.length > 0
+                        text: actionRow.modelData.shortcut || ""
+                        color: theme.textMuted
+                        font.pixelSize: theme.fs(11)
+                    }
+
+                    // Show / Hide (Eye icon)
+                    LoafButton {
+                        icon: actionRow.isHidden ? "eye-slash" : "eye"
+                        variant: "text"
+                        Accessible.name: actionRow.isHidden ? qsTr("Show in context menu") : qsTr("Hide from context menu")
+                        onClicked: {
+                            var map = Object.assign({}, theme.disabledMenuItems || {});
+                            if (actionRow.isHidden) {
+                                delete map[actionRow.modelData.id];
+                            } else {
+                                map[actionRow.modelData.id] = true;
+                            }
+                            theme.disabledMenuItems = map;
+                        }
                     }
                 }
             }
@@ -2780,11 +2906,13 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             LoafButton {
-                text: qsTr("Reset to Full")
+                text: qsTr("Reset to Default")
                 variant: "text"
                 onClicked: {
                     theme.disabledMenuItems = {};
                     theme.contextMenuMode = "full";
+                    core.set_setting("contextMenuOrder", "[]");
+                    customizeContextMenuDialog.refreshActions();
                 }
             }
             Item { Layout.fillWidth: true }
