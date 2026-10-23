@@ -731,10 +731,22 @@ ApplicationWindow {
         }
     }
 
+    // The settings tab is part of the URL: settings://behavior and friends.
+    function settingsUrl() {
+        var slugs = ["interface", "behavior", "accessibility", "experimental", "about"];
+        return "settings://" + (slugs[settingsView.activeTab] || slugs[0]);
+    }
+
+    function settingsTabName() {
+        var names = [qsTr("Interface"), qsTr("Behavior"), qsTr("Accessibility"),
+                     qsTr("Experimental"), qsTr("About Loaf")];
+        return names[settingsView.activeTab] || names[0];
+    }
+
     function startEditingPath() {
-        if (activeView !== "files")
-            return;
-        pathInput.text = engine.location_kind === "dir" ? engine.current_path : "";
+        pathInput.text = window.activeView === "pc" ? "pc://"
+            : (window.activeView === "settings" ? window.settingsUrl()
+            : (engine.location_kind === "dir" ? engine.current_path : ""));
         isEditingPath = true;
         pathInput.forceActiveFocus();
         pathInput.selectAll();
@@ -743,8 +755,25 @@ ApplicationWindow {
     function commitPathEdit() {
         var raw = pathInput.text.trim();
         isEditingPath = false;
-        if (raw.length > 0)
+        if (raw.length === 0) {
+            globalKeyHandler.forceActiveFocus();
+            return;
+        }
+        if (raw === "pc" || raw === "pc://" || raw === "pc:///" || raw === "thispc://" || raw === "computer:///") {
+            window.activeView = "pc";
+            window.markCurrentTab("pc", core.hostname || qsTr("This PC"));
+        } else if (raw === "settings" || raw.indexOf("settings://") === 0) {
+            window.activeView = "settings";
+            window.markCurrentTab("settings", qsTr("Settings"));
+            if (raw === "settings://behavior") settingsView.activeTab = 1;
+            else if (raw === "settings://accessibility") settingsView.activeTab = 2;
+            else if (raw === "settings://experimental") settingsView.activeTab = 3;
+            else if (raw === "settings://about") settingsView.activeTab = 4;
+            else settingsView.activeTab = 0;
+        } else {
+            showFiles();
             engine.set_path(raw);
+        }
         globalKeyHandler.forceActiveFocus();
     }
 
@@ -999,27 +1028,49 @@ ApplicationWindow {
                     }
                 }
 
-                // PC / Settings title chip.
+                // PC / Settings breadcrumbs: the place, then the settings tab.
                 RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: 12
-                    visible: window.activeView !== "files"
+                    spacing: 6
+                    visible: window.activeView !== "files" && !window.isEditingPath
+
+                    RowLayout {
+                        visible: window.activeView === "settings"
+                        spacing: 6
+                        LoafIcon { name: "gear"; size: 15; color: theme.textMuted }
+                        Text {
+                            text: qsTr("Settings")
+                            color: theme.textMuted
+                            font.pixelSize: theme.fs(12)
+                        }
+                    }
+                    LoafIcon {
+                        visible: window.activeView === "settings"
+                        name: "caret-right"
+                        size: 11
+                        color: theme.outline
+                        Layout.alignment: Qt.AlignVCenter
+                    }
                     Rectangle {
-                        Layout.preferredHeight: 32
-                        Layout.preferredWidth: auxRow.implicitWidth + 22
+                        Layout.preferredHeight: 30
+                        Layout.preferredWidth: curCrumb.implicitWidth + 20
                         radius: theme.radiusFull
                         color: theme.secondaryContainer
                         RowLayout {
-                            id: auxRow
+                            id: curCrumb
                             anchors.centerIn: parent
                             spacing: 6
                             LoafIcon {
-                                name: window.activeView === "pc" ? (core.device_type === "laptop" ? "laptop" : "desktop") : "gear"
+                                visible: window.activeView === "pc"
+                                name: core.device_type === "laptop" ? "laptop" : "desktop"
                                 size: 15
                                 color: theme.secondaryContainerFg
                             }
                             Text {
-                                text: window.activeView === "pc" ? (core.hostname || qsTr("This PC")) : qsTr("Settings")
+                                text: window.activeView === "pc"
+                                    ? (core.hostname || qsTr("This PC"))
+                                    : window.settingsTabName()
                                 color: theme.secondaryContainerFg
                                 font.pixelSize: theme.fs(12)
                                 font.bold: true
