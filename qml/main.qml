@@ -2749,9 +2749,9 @@ ApplicationWindow {
                             }
                             onPositionChanged: function(mouse) {
                                 if (pressed) {
-                                    var delta = Math.round((mouse.y - startY) / 40);
-                                    var targetIdx = startIdx + delta;
-                                    if (targetIdx >= 0 && targetIdx < customizePlaces.all.length && targetIdx !== placeRow.index) {
+                                    var pt = mapToItem(customizePlacesList.contentItem, mouse.x, mouse.y);
+                                    var targetIdx = Math.max(0, Math.min(customizePlaces.all.length - 1, Math.floor(pt.y / 44)));
+                                    if (targetIdx !== placeRow.index) {
                                         core.move_place(placeRow.modelData.id, targetIdx);
                                     }
                                 }
