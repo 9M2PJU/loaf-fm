@@ -2432,9 +2432,8 @@ ApplicationWindow {
             onSelected: function(v) { engine.change_folder_position(v); }
         }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.topMargin: 4; Layout.bottomMargin: 4; color: theme.separator }
-        LoafSwitch { label: qsTr("Show Hidden Files"); checked: engine.show_hidden; onToggled: engine.toggle_show_hidden() }
-        LoafSwitch { label: qsTr("Split View (F3)"); checked: window.splitView; onToggled: window.toggleSplit() }
-        LoafSwitch { label: qsTr("Search File Contents"); checked: theme.searchContents; onToggled: function(c) { theme.searchContents = c; } }
+        LoafSwitch { label: qsTr("Show Hidden Files"); checked: window.showHidden; onToggled: window.toggleShowHidden() }
+        LoafSwitch { label: qsTr("Split View (F3)"); checked: window.splitView && window.activeView === "files"; onToggled: window.toggleSplit() }
     }
 
     // ---------------------------------------------------------------------
