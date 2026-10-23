@@ -56,7 +56,22 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 The easiest way to install Loaf is through our interactive management script:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/m-uvex/loaf-fm/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/m-uvex/loaf-fm/main/install.sh | bash
+```
+
+The script detects your distribution and architecture, then walks you through an
+arrow-key menu to **Try** Loaf ephemerally, **Install**, **Update**, or **Uninstall** it.
+It installs the latest stable release by default, and can also target a specific
+release tag or build the latest development commit from source. It works on any
+distribution that accepts regular files in `~/.local` (or `/usr/local` with
+`sudo`); on **NixOS** it prints instructions to follow the manual Nix route below
+instead, since NixOS manages packages declaratively.
+
+You can also pass a command directly for scripting:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/m-uvex/loaf-fm/main/install.sh | bash -s -- install
+# also: try, update, uninstall
 ```
 
 ---
@@ -107,14 +122,6 @@ Download the `.rpm` package and install it using `dnf`:
 
 ```bash
 sudo dnf install ./loaf-0.1.0-1.fc44.x86_64.rpm
-```
-
-### 5. Using Nix / NixOS
-
-Run directly with flakes enabled:
-
-```bash
-nix run github:m-uvex/loaf-fm
 ```
 
 ### 5. Using Nix / NixOS
