@@ -16,6 +16,7 @@ Rectangle {
     signal placeClicked(var place, bool newTab)
     signal settingsClicked()
     signal placeMenuRequested(var place, real x, real y)
+    signal sidebarMenuRequested(real x, real y)
 
     readonly property var places: {
         try {
@@ -42,6 +43,17 @@ Rectangle {
 
     Accessible.role: Accessible.Pane
     Accessible.name: qsTr("Sidebar")
+
+    // Right-click empty area of the sidebar to expand/collapse or customize
+    MouseArea {
+        anchors.fill: parent
+        z: 0
+        acceptedButtons: Qt.RightButton
+        onClicked: function(mouse) {
+            var p = mapToItem(window.contentItem, mouse.x, mouse.y);
+            rail.sidebarMenuRequested(p.x, p.y);
+        }
+    }
 
     // Traveling selection highlight that smoothly glides between places, trash, and settings
     Rectangle {
@@ -191,7 +203,15 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: rail.expanded = !rail.expanded
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: function(mouse) {
+                    if (mouse.button === Qt.RightButton) {
+                        var p = mapToItem(window.contentItem, mouse.x, mouse.y);
+                        rail.sidebarMenuRequested(p.x, p.y);
+                    } else {
+                        rail.expanded = !rail.expanded;
+                    }
+                }
             }
         }
 

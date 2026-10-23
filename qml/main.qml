@@ -1304,6 +1304,8 @@ ApplicationWindow {
                     window.newTab("settings://");
                 }
                 onPlaceMenuRequested: function(place, x, y) { placeMenu.showFor(place, x, y); }
+                onSidebarMenuRequested: function(x, y) { sidebarMenu.showAt(x, y); }
+                Component.onCompleted: Qt.callLater(sidebar.updateHighlight)
             }
 
             ColumnLayout {
@@ -2016,6 +2018,27 @@ ApplicationWindow {
                 { text: qsTr("Properties"), icon: "info", separatorBefore: true, action: function() { window.showProperties([path]); } }
             ];
             openAt(x, y);
+        }
+    }
+
+    LoafMenu {
+        id: sidebarMenu
+        menuMinWidth: 210
+        function showAt(px, py) {
+            model = [
+                {
+                    text: sidebar.expanded ? qsTr("Collapse Sidebar") : qsTr("Expand Sidebar"),
+                    icon: sidebar.expanded ? "sidebar-simple" : "sidebar",
+                    action: function() { sidebar.expanded = !sidebar.expanded; }
+                },
+                {
+                    text: qsTr("Customize Sidebar…"),
+                    icon: "sliders-horizontal",
+                    separatorBefore: true,
+                    action: function() { customizePlaces.open(); }
+                }
+            ];
+            openAt(px, py);
         }
     }
 
