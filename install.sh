@@ -12,7 +12,7 @@
 #   LOAF_OS_SPOOF  Override /etc/os-release ID for testing (e.g. LOAF_OS_SPOOF=ubuntu)
 #   PREFIX         Install prefix for tarball installs (default: $HOME/.local)
 #
-# Release asset naming contract (v0.1.0 is the reference release):
+# Release asset naming contract (v0.2.0 is the reference release):
 #   deb:     loaf_<version>_<amd64|arm64>.deb
 #   pacman:  loaf-<version>-1-<x86_64|aarch64>.pkg.tar.zst
 #   rpm:     loaf-<version>-1.*.<x86_64|aarch64>.rpm
@@ -344,10 +344,10 @@ choose_version_and_source() {
         1) SOURCE_KIND="tarball" ;;
         2)
             SOURCE_KIND="tag"
-            if prompt_text "Enter release tag (e.g. v0.1.0):" "v0.1.0"; then
+            if prompt_text "Enter release tag (e.g. v0.2.0):" "v0.2.0"; then
                 VERSION_TAG="$PROMPT_VALUE"
             fi
-            VERSION_TAG="${VERSION_TAG:-v0.1.0}"
+            VERSION_TAG="${VERSION_TAG:-v0.2.0}"
             ;;
         3) SOURCE_KIND="dev" ;;
         4) SOURCE_KIND="local" ;;

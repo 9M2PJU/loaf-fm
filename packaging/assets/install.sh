@@ -7,7 +7,7 @@ if [ "$1" = "--system" ] || [ "$EUID" -eq 0 ]; then
     PREFIX="/usr/local"
 fi
 
-echo "Installing Loaf v0.1.0 to $PREFIX..."
+echo "Installing Loaf v0.2.0 to $PREFIX..."
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

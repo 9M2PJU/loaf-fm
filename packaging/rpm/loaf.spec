@@ -2,7 +2,7 @@
 #
 # Build from a source tarball (needs network access for crates.io unless the
 # crates are vendored):
-#   git archive --prefix=loaf-0.1.0/ -o ~/rpmbuild/SOURCES/loaf-0.1.0.tar.gz HEAD
+#   git archive --prefix=loaf-0.2.0/ -o ~/rpmbuild/SOURCES/loaf-0.2.0.tar.gz HEAD
 #   rpmbuild -ba packaging/rpm/loaf.spec
 #
 # Or package an already built binary (target/release/loaf) without
@@ -12,7 +12,7 @@
 %global debug_package %{nil}
 
 Name:           loaf
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Material 3 Expressive file manager built with Rust and Qt 6
 License:        MIT
@@ -94,5 +94,8 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/loaf.desktop
 %{_datadir}/icons/hicolor/*/apps/loaf.*
 
 %changelog
+* Mon Oct 26 2026 Loaf contributors - 0.2.0-1
+- Release v0.2.0: SMB network shares, P2P Cloudflare sharing, tab/split view, batch rename, and asynchronous thumbnail pipeline.
+
 * Tue Oct 20 2026 Loaf contributors - 0.1.0-1
 - First RPM package.

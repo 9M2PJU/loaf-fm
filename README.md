@@ -47,6 +47,8 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 - **Thumbnails**: Images, videos, PDFs and fonts through the shared freedesktop thumbnail cache and system thumbnailers, loaded in the background.
 - **Search**: Filter the folder as you type, or search subfolders / your whole home folder in the background, optionally inside text files.
 - **Desktop Integration**: GTK bookmarks, localized user folders, Recent and Starred, Open With / default apps, templates ("New Document"), Nautilus scripts, system clipboard, "Show in folder" from other apps, Open as Administrator.
+- **Network Storage (SMB / Windows Share)**: Connect to SMB / CIFS shares (`smb://server/share`), manage named server profiles, authenticate with user/domain credentials, securely store credentials via system keyring, and browse remote network directories seamlessly.
+- **P2P File Sharing via Link**: Share files or compressed archives peer-to-peer using on-demand Cloudflare tunnels, optional password protection, expiration timers, and bandwidth rate-limiting.
 - **Low-Power Mode**: Turns off animations and effects automatically on machines without GPU acceleration or with little memory; reduce-motion and text-size settings for accessibility.
 
 ---
@@ -70,8 +72,8 @@ Pre-built packages are available for manual installation (See release page for p
 Download the self-contained `.AppImage` and run it directly:
 
 ```bash
-chmod +x Loaf-v0.1.0-x86_64.AppImage
-./Loaf-v0.1.0-x86_64.AppImage
+chmod +x Loaf-v0.2.0-x86_64.AppImage
+./Loaf-v0.2.0-x86_64.AppImage
 ```
 
 ### 2. Debian and Debian-based (Ubuntu, Mint, etc.) (`.deb`)
@@ -80,10 +82,10 @@ Download the `.deb` package and install it using `apt` or `dpkg`:
 
 ```bash
 # Using apt (Recommended):
-sudo apt install ./loaf_0.1.0_amd64.deb
+sudo apt install ./loaf_0.2.0_amd64.deb
 
 # Or using dpkg:
-sudo dpkg -i ./loaf_0.1.0_amd64.deb
+sudo dpkg -i ./loaf_0.2.0_amd64.deb
 sudo apt-get install -f
 ```
 
@@ -92,7 +94,7 @@ sudo apt-get install -f
 Download the `.pkg.tar.zst` package and install it using `pacman`:
 
 ```bash
-sudo pacman -U ./loaf-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./loaf-0.2.0-1-x86_64.pkg.tar.zst
 ```
 
 Or build from the included `PKGBUILD`:
@@ -106,7 +108,7 @@ makepkg -si
 Download the `.rpm` package and install it using `dnf`:
 
 ```bash
-sudo dnf install ./loaf-0.1.0-1.fc44.x86_64.rpm
+sudo dnf install ./loaf-0.2.0-1.fc44.x86_64.rpm
 ```
 
 ### 5. Using Nix / NixOS

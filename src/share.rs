@@ -125,7 +125,7 @@ fn install_cloudflared_sync() -> Result<PathBuf, String> {
         matches!(status, Ok(s) if s.success())
     } else if let Some(py) = util::which("python3") {
         let py_script = format!(
-            "import urllib.request\nreq = urllib.request.Request('{}', headers={{'User-Agent': 'loaf/0.1'}})\nwith urllib.request.urlopen(req) as r, open('{}', 'wb') as f:\n    f.write(r.read())",
+            "import urllib.request\nreq = urllib.request.Request('{}', headers={{'User-Agent': 'loaf/0.2'}})\nwith urllib.request.urlopen(req) as r, open('{}', 'wb') as f:\n    f.write(r.read())",
             url, tmp_bin.to_str().unwrap()
         );
         let status = Command::new(py).args(["-c", &py_script]).status();
