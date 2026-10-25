@@ -309,7 +309,10 @@ We welcome contributions of all kinds! Please see [CONTRIBUTING.md](CONTRIBUTING
 
 ## How AI is used in this project
 
-
+I've been learning rust for a while and took on this project as my first real project to build with rust so **most of the code is hand written** by me to 1 test my limits and 2 learn even more.
+AI comes in where it's actually useful, It is used to write docs and comments, it created the install script and takes care of releases, some bugs were fixed with the help of AI and animations were also created by it.
+Every single line my AI writes is reviewed by me (and sometimes edited) and everything is tested properly.
+Btw the claude contributor is because of a PR, I don't even use claude.....
 
 ## License
 
