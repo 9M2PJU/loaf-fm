@@ -18,3 +18,12 @@ packaging/dist/*.rpm
 packaging/dist/*.deb
 packaging/dist/loaf-v*
 packaging/dist/loaf-*
+
+# Showcase & media tools
+assets/showcase/
+assets/showcase/node_modules
+assets/showcase/out
+showcase/
+
+# Site development
+index.html
