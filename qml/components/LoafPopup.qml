@@ -46,8 +46,6 @@ Popup {
 
     background: Item {
         id: bgItem
-
-        // Subtle soft shadow underneath the popup card
         Rectangle {
             anchors.fill: parent
             anchors.topMargin: 3
@@ -56,8 +54,6 @@ Popup {
             color: "#000000"
             opacity: theme.isDark ? 0.35 : 0.12
         }
-
-        // Main rounded card
         Rectangle {
             id: surfaceRect
             anchors.fill: parent
@@ -81,8 +77,6 @@ Popup {
 
     // True while the pointer is over the popup content (used for submenu lifetime).
     property alias contentHovered: contentHoverHandler.hovered
-
-    // ---- positioning helpers ------------------------------------------------
 
     function winWidth() {
         if (typeof window !== "undefined" && window && window.width > 0) return window.width;

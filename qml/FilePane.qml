@@ -96,8 +96,6 @@ Item {
         }
     }
 
-    // ---- selection API (used by main.qml) ---------------------------------
-
     function selectedPaths() {
         return Object.keys(selection);
     }
@@ -413,8 +411,6 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             transform: Translate { id: stageShift; y: 0 }
-
-            // ------------------------------------------------------------------
             // Connected selection.
             //
             // One canvas paints the whole selection boundary: every selected
@@ -422,7 +418,6 @@ Item {
             // convex corners get a quadratic curve, and concave (inner) corners
             // get an arc from the neighbouring cells. Delegates only keep their
             // content and hover state, so no seam rectangles are needed.
-            // ------------------------------------------------------------------
             Canvas {
                 id: selectionCanvas
                 anchors.fill: parent
@@ -512,7 +507,6 @@ Item {
 
                 // Traces the outline of the selected cells and fills it.
                 function paintBlock(ctx, sel) {
-                    // ---- 1. Collect the boundary edges of the union --------
                     // Every side of a selected cell that faces an unselected
                     // cell becomes a directed edge (clockwise, interior on the
                     // right). One row of slack on each side of the viewport
@@ -539,8 +533,6 @@ Item {
                     }
                     if (segs.length === 0)
                         return;
-
-                    // ---- 2. Chain the edges into closed loops --------------
                     var loops = traceLoops(segs);
                     var rad = ctxRadius();
                     ctx.beginPath();
@@ -745,8 +737,6 @@ Item {
                     font.bold: true
                 }
             }
-
-            // Small spinner while a scan / search runs.
             LoafIcon {
                 id: spinner
                 visible: paneEngine.loading && paneEngine.item_count === 0 && paneEngine.error_text.length === 0
@@ -760,8 +750,6 @@ Item {
                     from: 0; to: 360; duration: 1200; loops: Animation.Infinite
                 }
             }
-
-            // Background: deselect, empty-area menu, drops into this folder.
             DropArea {
                 anchors.fill: parent
                 keys: ["text/uri-list"]
@@ -771,8 +759,6 @@ Item {
                     pane.handleDropOn(drop, pane.dropTargetDir(), null);
                 }
             }
-
-            // ===================== GRID =====================
             GridView {
                 id: gridView
                 anchors.fill: parent
@@ -1094,8 +1080,6 @@ Item {
                                     opacity: card.isSelected ? 0.75 : 0.35
                                 }
                             }
-
-                            // Symlink / star badges.
                             Rectangle {
                                 visible: card.is_symlink
                                 width: 14; height: 14; radius: 7
@@ -1220,8 +1204,6 @@ Item {
                     }
                 }
             }
-
-            // ===================== LIST =====================
             Rectangle {
                 id: listHeader
                 visible: pane.isList()
@@ -1336,8 +1318,6 @@ Item {
                     acceptedModifiers: Qt.ControlModifier
                     onWheel: function(event) { theme.stepZoom(event.angleDelta.y > 0 ? 1 : -1); }
                 }
-
-                // Empty space below the rows: deselect / background menu.
                 footer: Item {
                     width: listView.width
                     height: 80

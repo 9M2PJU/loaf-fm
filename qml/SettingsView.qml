@@ -72,8 +72,6 @@ Item {
     RowLayout {
         anchors.fill: parent
         spacing: 16
-
-        // Left Navigation Tabs
         Rectangle {
             Layout.fillHeight: true
             Layout.preferredWidth: Math.max(128, Math.min(200, parent.width * 0.40))
@@ -86,8 +84,6 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 6
-
-                // Section Label
                 Text {
                     text: qsTr("SETTINGS")
                     color: theme.textMuted
@@ -223,8 +219,6 @@ Item {
                 Item { Layout.fillHeight: true }
             }
         }
-
-        // Right Content Area
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -245,8 +239,6 @@ Item {
                     id: contentColumn
                     width: contentScroll.availableWidth
                     spacing: 16
-
-                    // Single Unified Top Header (No dot, no repeated pill)
                     Text {
                         text: settingsView.searchQuery.length > 0
                             ? "Settings"
@@ -259,8 +251,6 @@ Item {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                     }
-
-                    // Search Results Header (when searching)
                     RowLayout {
                         Layout.fillWidth: true
                         visible: settingsView.searchQuery.length > 0 && settingsView.totalMatches > 0
@@ -289,8 +279,6 @@ Item {
                             }
                         }
                     }
-
-                    // Empty Search Results State
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.topMargin: 40
@@ -313,10 +301,6 @@ Item {
                             font.bold: true
                         }
                     }
-
-                    // ==========================================
-                    // TAB 0: INTERFACE
-                    // ==========================================
                     ColumnLayout {
                         id: tabInterface
                         Layout.fillWidth: true
@@ -336,8 +320,6 @@ Item {
                         Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabInterface.slideOffset }
-
-                        // 1. Theme (Auto, Light, Dark)
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card1Match
                             Layout.fillWidth: true
@@ -365,8 +347,6 @@ Item {
                                     id: schemePills
                                     Layout.fillWidth: true
                                     spacing: 8
-
-                                    // AUTO PILL
                                     Item {
                                         width: 88; height: 38
                                         Rectangle {
@@ -399,8 +379,6 @@ Item {
                                             onClicked: theme.themeMode = "auto"
                                         }
                                     }
-
-                                    // LIGHT PILL
                                     Item {
                                         width: 88; height: 38
                                         Rectangle {
@@ -433,8 +411,6 @@ Item {
                                             onClicked: theme.themeMode = "light"
                                         }
                                     }
-
-                                    // DARK PILL
                                     Item {
                                         width: 88; height: 38
                                         Rectangle {
@@ -470,8 +446,6 @@ Item {
                                 }
                             }
                         }
-
-                        // 2. Palette Picker (Pill Swatches)
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card2Match
                             Layout.fillWidth: true
@@ -558,8 +532,6 @@ Item {
                                 }
                             }
                         }
-
-                        // 4. Icon Style (Reveals Adwaita & System when experimental enabled)
                         Rectangle {
                             visible: theme.showExperimentalIcons && (settingsView.searchQuery.length === 0 || settingsView.card4Match)
                             Layout.fillWidth: true
@@ -635,8 +607,6 @@ Item {
                                 }
                             }
                         }
-
-                        // 5. Phosphor Weight Variant
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card5Match
                             Layout.fillWidth: true
@@ -706,11 +676,6 @@ Item {
                             }
                         }
                     }
-
-
-                    // ==========================================
-                    // TAB 1: BEHAVIOR
-                    // ==========================================
                     ColumnLayout {
                         id: tabBehavior
                         Layout.fillWidth: true
@@ -730,8 +695,6 @@ Item {
                         Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabBehavior.slideOffset }
-
-                        // Left-Click Drag Action
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card6Match
                             Layout.fillWidth: true
@@ -786,8 +749,6 @@ Item {
                                 }
                             }
                         }
-
-                        // Picture Thumbnails
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card7Match
                             Layout.fillWidth: true
@@ -828,8 +789,6 @@ Item {
                                 }
                             }
                         }
-
-                        // Show Hidden Files
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card8Match
                             Layout.fillWidth: true
@@ -870,8 +829,6 @@ Item {
                                 }
                             }
                         }
-
-                        // Disambiguate duplicate names in search
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card9Match
                             Layout.fillWidth: true
@@ -976,11 +933,6 @@ Item {
                             }
                         }
                     }
-
-
-                    // ==========================================
-                    // TAB 2: ACCESSIBILITY
-                    // ==========================================
                     ColumnLayout {
                         id: tabAccessibility
                         Layout.fillWidth: true
@@ -1000,8 +952,6 @@ Item {
                         Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabAccessibility.slideOffset }
-
-                        // Performance: low-power mode
                         SettingCard {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card13Match
                             title: qsTr("Low-power mode")
@@ -1038,11 +988,6 @@ Item {
                             }
                         }
                     }
-
-
-                    // ==========================================
-                    // TAB 3: EXPERIMENTAL
-                    // ==========================================
                     ColumnLayout {
                         id: tabExperimental
                         Layout.fillWidth: true
@@ -1062,8 +1007,6 @@ Item {
                         Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabExperimental.slideOffset }
-
-                        // More Icon Styles (System & Adwaita)
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1103,8 +1046,6 @@ Item {
                                 }
                             }
                         }
-
-                        // Advanced Archive Formats
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1144,8 +1085,6 @@ Item {
                                 }
                             }
                         }
-
-                        // PC Customization
                         Rectangle {
                             visible: settingsView.searchQuery.length === 0 || settingsView.card12Match
                             Layout.fillWidth: true
@@ -1190,8 +1129,6 @@ Item {
                                 }
                             }
                         }
-
-                        // Share via Link (Cloudflare Tunnel P2P)
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
@@ -1239,10 +1176,6 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // TAB 5: SHARE VIA LINK SETTINGS
-                    // ==========================================
                     ColumnLayout {
                         id: tabShare
                         Layout.fillWidth: true
@@ -1262,10 +1195,6 @@ Item {
                         Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                         transform: Translate { y: tabShare.slideOffset }
-
-                        // ==========================================
-                        // 1. Share Provider
-                        // ==========================================
                         SettingCard {
                             title: qsTr("Share Provider")
                             subtitle: qsTr("Choose how files are hosted when sharing via link")
@@ -1301,10 +1230,6 @@ Item {
                                 }
                             }
                         }
-
-                        // ==========================================
-                        // 2. Tunnel Agent Status
-                        // ==========================================
                         SettingCard {
                             title: qsTr("Cloudflare Tunnel agent")
                             subtitle: (typeof core !== "undefined" && core && core.cloudflared_ready)
@@ -1346,10 +1271,6 @@ Item {
                                 }
                             }
                         }
-
-                        // ==========================================
-                        // 3. Compression Rules
-                        // ==========================================
                         SettingCard {
                             title: qsTr("Compress folders")
                             subtitle: qsTr("Automatically bundle folders into an archive before sharing")
@@ -1396,10 +1317,6 @@ Item {
                                 onTextChanged: theme.sharePassword = text
                             }
                         }
-
-                        // ==========================================
-                        // 4. Expiration & Throttling
-                        // ==========================================
                         SettingCard {
                             title: qsTr("Link expiration")
                             subtitle: qsTr("Automatically shut down the stream and revoke the link after this period")
@@ -1439,10 +1356,6 @@ Item {
                                 }
                             }
                         }
-
-                        // ==========================================
-                        // 5. Active Shares Manager
-                        // ==========================================
                         Rectangle {
                             id: activeSharesPanel
                             Layout.fillWidth: true
@@ -1613,10 +1526,6 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // TAB 3: ABOUT LOAF
-                    // ==========================================
                     ColumnLayout {
                         id: tabAbout
                         Layout.fillWidth: true

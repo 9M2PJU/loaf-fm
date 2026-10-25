@@ -1,8 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import app.loaf
-
-// Single-line text field in the theme's style.
 TextField {
     id: field
     color: theme.textMain

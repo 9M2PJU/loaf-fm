@@ -59,7 +59,6 @@ pub mod qobject {
     }
 
     unsafe extern "RustQt" {
-        // settings & theme
         #[qinvokable]
         fn get_setting(self: &LoafCore, key: &QString) -> QString;
         #[qinvokable]
@@ -70,8 +69,6 @@ pub mod qobject {
         fn reload_wallpaper_colors(self: Pin<&mut LoafCore>) -> bool;
         #[qinvokable]
         fn resolve_icon(self: &LoafCore, theme: &QString, name: &QString) -> QString;
-
-        // places, bookmarks, starred, frequent
         #[qinvokable]
         fn load_places(self: Pin<&mut LoafCore>);
         #[qinvokable]
@@ -110,8 +107,6 @@ pub mod qobject {
         /// to the longest common prefix of matching folders.
         #[qinvokable]
         fn complete_path(self: &LoafCore, text: &QString, show_hidden: bool) -> QString;
-
-        // drives
         #[qinvokable]
         fn load_drives(self: Pin<&mut LoafCore>);
         #[qinvokable]
@@ -126,8 +121,6 @@ pub mod qobject {
         fn lock_drive(self: Pin<&mut LoafCore>, device: &QString);
         #[qinvokable]
         fn rename_drive(self: Pin<&mut LoafCore>, device: &QString, name: &QString);
-
-        // opening things
         #[qinvokable]
         fn open_item(self: Pin<&mut LoafCore>, path: &QString);
         #[qinvokable]
@@ -154,8 +147,6 @@ pub mod qobject {
         fn open_as_admin(self: Pin<&mut LoafCore>, path: &QString);
         #[qinvokable]
         fn open_new_window(self: &LoafCore, path: &QString);
-
-        // information
         #[qinvokable]
         fn quick_look(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
@@ -170,8 +161,6 @@ pub mod qobject {
         fn mime_type(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
         fn secret_lookup(self: &LoafCore, key: &QString) -> QString;
-
-        // file operations
         #[qinvokable]
         fn check_conflicts(self: &LoafCore, paths_json: &QString, dest: &QString) -> QString;
         /// mode: copy | move | link; resolution: rename | skip | overwrite.
@@ -207,8 +196,6 @@ pub mod qobject {
         fn undo(self: Pin<&mut LoafCore>);
         #[qinvokable]
         fn redo(self: Pin<&mut LoafCore>);
-
-        // share via link & cloudflared management
         #[qinvokable]
         fn is_cloudflared_installed(self: &LoafCore) -> bool;
         #[qinvokable]
@@ -239,11 +226,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-
-// ---------------------------------------------------------------------------
-// operations
-// ---------------------------------------------------------------------------
-
 struct Op {
     id: u64,
     title: String,
@@ -566,10 +548,6 @@ fn wallpaper_dirs() -> Vec<PathBuf> {
 }
 
 impl qobject::LoafCore {
-    // ------------------------------------------------------------------
-    // operation plumbing
-    // ------------------------------------------------------------------
-
     fn publish_ops(mut self: Pin<&mut Self>) {
         let list: Vec<serde_json::Value> = self
             .ops
@@ -715,11 +693,6 @@ impl qobject::LoafCore {
             }
         }
     }
-
-    // ------------------------------------------------------------------
-    // settings & theme
-    // ------------------------------------------------------------------
-
     pub fn get_setting(&self, key: &QString) -> QString {
         q(&state::get(&key.to_string()).unwrap_or_default())
     }
@@ -760,11 +733,6 @@ impl qobject::LoafCore {
         };
         q(&icons::resolve(&t, &name.to_string(), 48))
     }
-
-    // ------------------------------------------------------------------
-    // places
-    // ------------------------------------------------------------------
-
     pub fn load_places(mut self: Pin<&mut Self>) {
         let places: Vec<serde_json::Value> = build_places(&self.hostname().to_string(), &self.device_type().to_string())
             .into_iter()
@@ -907,11 +875,6 @@ impl qobject::LoafCore {
     pub fn complete_path(&self, text: &QString, show_hidden: bool) -> QString {
         q(&complete_path(&text.to_string(), show_hidden))
     }
-
-    // ------------------------------------------------------------------
-    // drives
-    // ------------------------------------------------------------------
-
     pub fn load_drives(self: Pin<&mut Self>) {
         let thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -1001,11 +964,6 @@ impl qobject::LoafCore {
         let name = name.to_string();
         self.drive_job(format!("Renaming {}", dev), move || drives::set_label(&dev, &name).map(|_| String::new()));
     }
-
-    // ------------------------------------------------------------------
-    // opening
-    // ------------------------------------------------------------------
-
     pub fn open_item(mut self: Pin<&mut Self>, path: &QString) {
         let p = path.to_string();
         if p.starts_with(crate::pane::ARCHIVE_SCHEME) {
@@ -1248,11 +1206,6 @@ impl qobject::LoafCore {
         }
         let _ = util::spawn_detached(cmd);
     }
-
-    // ------------------------------------------------------------------
-    // information
-    // ------------------------------------------------------------------
-
     pub fn quick_look(&self, path: &QString) -> QString {
         q(&serde_json::to_string(&info::quick_look(Path::new(&path.to_string()))).unwrap_or_else(|_| "{}".into()))
     }
@@ -1312,11 +1265,6 @@ impl qobject::LoafCore {
     pub fn secret_lookup(&self, key: &QString) -> QString {
         q(&secret_get(&key.to_string()))
     }
-
-    // ------------------------------------------------------------------
-    // file operations
-    // ------------------------------------------------------------------
-
     pub fn check_conflicts(&self, paths_json: &QString, dest: &QString) -> QString {
         let dest = PathBuf::from(dest.to_string());
         let mut out = Vec::new();
@@ -1775,8 +1723,6 @@ impl qobject::LoafCore {
         if paths.is_empty() {
             return;
         }
-
-        // Read settings
         let compress_folders = match self.get_setting(&q("shareCompressFolders")).to_string().as_str() {
             "false" => false,
             _ => true,

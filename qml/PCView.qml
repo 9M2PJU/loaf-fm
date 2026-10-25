@@ -171,8 +171,6 @@ Item {
             return (b / 1024).toFixed(0) + " KB";
         return "0 B";
     }
-
-    // Responsive column count: reflows to the available width.
     function columnCount(minCellWidth) {
         return Math.max(1, Math.floor(pcFlick.width / minCellWidth));
     }
@@ -312,11 +310,6 @@ Item {
                 pcView.sectionConfig = pcView.normalizeConfig(JSON.parse(cfg));
         } catch (e) {}
     }
-
-    // =========================================================================
-    // LAYOUT
-    // =========================================================================
-
     Flickable {
         id: pcFlick
         anchors.fill: parent
@@ -329,8 +322,6 @@ Item {
             id: pcCol
             width: pcFlick.width
             spacing: 24
-
-            // ===== Unified Header: hostname & device type icon =====
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -357,8 +348,6 @@ Item {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                 }
-
-                // Customize / Done (only when the experimental flag is enabled).
                 LoafButton {
                     id: customizeBtn
                     visible: pcView.customizationEnabled
@@ -368,8 +357,6 @@ Item {
                     onClicked: pcView.isCustomizing = !pcView.isCustomizing
                 }
             }
-
-            // ===== SECTIONS (Reorderable) =====
             Repeater {
                 model: pcView.sectionOrder
 
@@ -384,8 +371,6 @@ Item {
                     property string secKey: modelData
                     property bool secVisible: pcView.sectionVisible(modelData)
                     property string secView: pcView.sectionView(modelData)
-
-                    // ----- Section header + customization controls -----
                     SectionHeader {
                         Layout.fillWidth: true
                         icon: sectionDelegate.secKey === "places" ? "folder"
@@ -397,8 +382,6 @@ Item {
                         subtitle: sectionDelegate.secKey === "external"
                                   ? theme.plural(pcView.externalDrives.length, qsTr("1 drive connected"), qsTr("%1 drives connected"))
                                   : ""
-
-                        // View mode toggle (places / frequent only)
                         LoafButton {
                             visible: pcView.customizing
                                      && (sectionDelegate.secKey === "places" || sectionDelegate.secKey === "frequent")
@@ -429,8 +412,6 @@ Item {
                             onClicked: pcView.toggleSectionVisibility(sectionDelegate.secKey)
                         }
                     }
-
-                    // ----- Dashed restore strip when a section is hidden -----
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 52
@@ -456,10 +437,6 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // SECTION: PLACES
-                    // ==========================================
                     Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: sectionDelegate.secView === "carousel" ? 54 : placesGrid.implicitHeight
@@ -559,10 +536,6 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // SECTION: FREQUENT
-                    // ==========================================
                     Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: sectionDelegate.secView === "grid" ? freqGrid.implicitHeight : 48
@@ -648,18 +621,12 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // SECTION: INTERNAL STORAGE
-                    // ==========================================
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 12
                         visible: sectionDelegate.secVisible
                                  && sectionDelegate.secKey === "internal"
                                  && pcView.internalDrives.length > 0
-
-                        // Aggregate summary card (total / free). No percentage pill.
                         LoafCard {
                             Layout.fillWidth: true
 
@@ -710,10 +677,6 @@ Item {
                             }
                         }
                     }
-
-                    // ==========================================
-                    // SECTION: EXTERNAL STORAGE
-                    // ==========================================
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 12
@@ -737,8 +700,6 @@ Item {
             }
         }
     }
-
-    // Shared delegate for every drive row (internal + external).
     Component {
         id: driveDelegate
 
@@ -754,16 +715,12 @@ Item {
             }
         }
     }
-
-    // Right-click drive actions.
     LoafMenu {
         id: driveMenu
         parent: Overlay.overlay
         model: []
         menuMinWidth: 208
     }
-
-    // Rename drive prompt.
     LoafTextPrompt {
         id: renamePrompt
         title: qsTr("Rename Drive")

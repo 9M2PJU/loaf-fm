@@ -5,11 +5,6 @@
 use crate::util;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-// ------------------------------------------------------------------
-// XDG user directories (~/.config/user-dirs.dirs)
-// ------------------------------------------------------------------
-
 /// Parses `user-dirs.dirs` content into (KEY, absolute path) pairs, e.g.
 /// ("PICTURES", "/home/u/Bilder").
 pub fn parse_user_dirs(content: &str, home: &Path) -> Vec<(String, PathBuf)> {
@@ -153,11 +148,6 @@ pub fn default_places() -> Vec<Place> {
 
     v
 }
-
-// ------------------------------------------------------------------
-// GTK bookmarks (~/.config/gtk-3.0/bookmarks)
-// ------------------------------------------------------------------
-
 pub fn bookmarks_file() -> PathBuf {
     util::config_home().join("gtk-3.0/bookmarks")
 }
@@ -260,11 +250,6 @@ pub fn move_bookmark(path: &Path, to: usize) -> std::io::Result<()> {
     list.insert(to.min(list.len()), b);
     save_bookmarks(&list)
 }
-
-// ------------------------------------------------------------------
-// Recently used files (~/.local/share/recently-used.xbel)
-// ------------------------------------------------------------------
-
 pub fn recent_file() -> PathBuf {
     util::data_home().join("recently-used.xbel")
 }
@@ -384,11 +369,6 @@ pub fn add_recent(path: &Path, mime: &str) {
     let updated = add_recent_in(&content, path, mime, &iso_utc_now());
     let _ = util::write_atomic(&file, updated.as_bytes());
 }
-
-// ------------------------------------------------------------------
-// Templates (~/Templates) and Nautilus scripts
-// ------------------------------------------------------------------
-
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct MenuFile {
     pub name: String,
@@ -457,11 +437,6 @@ pub fn run_script(script: &Path, current_dir: &Path, selected: &[PathBuf]) -> st
         .env("NAUTILUS_SCRIPT_CURRENT_URI", uri_for(current_dir));
     util::spawn_detached(cmd)
 }
-
-// ------------------------------------------------------------------
-// Starred files (Loaf's own list, ~/.config/loaf/starred.json)
-// ------------------------------------------------------------------
-
 fn starred_file() -> PathBuf {
     util::config_home().join("loaf/starred.json")
 }

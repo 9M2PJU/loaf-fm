@@ -19,11 +19,6 @@ ApplicationWindow {
     // Mirror the whole layout for right-to-left languages.
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
-
-    // ---------------------------------------------------------------------
-    // state
-    // ---------------------------------------------------------------------
-
     property string activeView: "files" // "files", "settings", "pc"
     property bool isEditingPath: false
     property bool keyboardNavActive: false
@@ -56,10 +51,7 @@ ApplicationWindow {
         || window.isEditingPath
     readonly property bool gridKeyboardReady: activeView === "files" && !searchInput.activeFocus
         && !pathInput.activeFocus && !anyModalOpen && !!activePane && activePane.renamingPath === ""
-
-    // ---------------------------------------------------------------------
     // helpers used by the panes and dialogs
-    // ---------------------------------------------------------------------
 
     function toast(kind, text) {
         toastItem.show(kind, text);
@@ -232,11 +224,6 @@ ApplicationWindow {
         if (paths.length > 0)
             quickLook.showFor(activePane.cursorPath || paths[paths.length - 1]);
     }
-
-    // ---------------------------------------------------------------------
-    // tabs, split view, session
-    // ---------------------------------------------------------------------
-
     function saveCurrentTab() {
         var t = tabs[currentTab];
         if (!t) return;
@@ -550,11 +537,6 @@ ApplicationWindow {
         }
         globalKeyHandler.forceActiveFocus();
     }
-
-    // ---------------------------------------------------------------------
-    // keyboard
-    // ---------------------------------------------------------------------
-
     Shortcut { sequences: [StandardKey.Undo]; enabled: core.can_undo && !window.anyModalOpen && !searchInput.activeFocus; onActivated: core.undo() }
     Shortcut { sequences: ["Ctrl+Y", "Ctrl+Shift+Z"]; enabled: core.can_redo && !window.anyModalOpen && !searchInput.activeFocus; onActivated: core.redo() }
     Shortcut { sequence: "Ctrl+C"; enabled: window.gridKeyboardReady; onActivated: window.copySelection(false) }
@@ -818,17 +800,10 @@ ApplicationWindow {
         }
         globalKeyHandler.forceActiveFocus();
     }
-
-    // ---------------------------------------------------------------------
-    // shell
-    // ---------------------------------------------------------------------
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 10
         z: 1
-
-        // ---------------- top bar ----------------
         RowLayout {
             Layout.fillWidth: true
             Layout.topMargin: 14
@@ -851,8 +826,6 @@ ApplicationWindow {
                     Text { text: qsTr("Admin"); color: theme.danger; font.pixelSize: theme.fs(14); font.bold: true }
                 }
             }
-
-            // Back / forward chip.
             Rectangle {
                 id: navChip
                 Layout.preferredHeight: 42
@@ -1234,8 +1207,6 @@ ApplicationWindow {
                                 engine.search(searchInput.text, window.searchScope, theme.searchContents);
                         }
                     }
-
-                    // Single search settings dropdown button
                     TopIconButton {
                         id: searchSettingsBtn
                         visible: window.activeView === "files"
@@ -1261,8 +1232,6 @@ ApplicationWindow {
                     }
                 }
             }
-
-            // View options dropdown + quick view cycle button
             Rectangle {
                 id: viewDropdownButton
                 visible: window.activeView === "files"
@@ -1276,8 +1245,6 @@ ApplicationWindow {
                     id: viewRow
                     anchors.centerIn: parent
                     spacing: 4
-
-                    // Left icon button: cycles between views
                     Rectangle {
                         width: 32
                         height: 32
@@ -1298,8 +1265,6 @@ ApplicationWindow {
                             onClicked: engine.set_view(engine.view_mode === "grid" ? "list" : "grid")
                         }
                     }
-
-                    // Right trigger: toggles dropdown
                     Item {
                         implicitWidth: dropRow.implicitWidth + 10
                         implicitHeight: 32
@@ -1345,8 +1310,6 @@ ApplicationWindow {
                 onClicked: window.confirmEmptyTrash()
             }
         }
-
-        // ---------------- body ----------------
         RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -1494,8 +1457,6 @@ ApplicationWindow {
                                 size: 14
                                 color: tabDelegate.current ? theme.secondaryContainerFg : theme.textMuted
                             }
-
-                            // Left Dir Label
                             Item {
                                 Layout.fillWidth: true
                                 height: parent.height
@@ -1510,8 +1471,6 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                 }
                             }
-
-                            // Divider for split tab
                             Rectangle {
                                 visible: tabDelegate.isSplit
                                 width: 1
@@ -1519,8 +1478,6 @@ ApplicationWindow {
                                 color: tabDelegate.current ? theme.secondaryContainerFg : theme.outlineVariant
                                 opacity: 0.35
                             }
-
-                            // Right Dir Label (only in split view)
                             Item {
                                 visible: tabDelegate.isSplit
                                 Layout.fillWidth: true
@@ -1687,8 +1644,6 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 34
     }
-
-    // Small round icon button used in the top bar.
     component TopIconButton: Item {
         id: tib
         property string iconName: ""
@@ -1734,11 +1689,6 @@ ApplicationWindow {
         ToolTip.text: tib.accessibleName
         ToolTip.delay: 600
     }
-
-    // ---------------------------------------------------------------------
-    // drag & drop
-    // ---------------------------------------------------------------------
-
     QtObject {
         id: dragManager
         property bool active: false
@@ -1853,11 +1803,6 @@ ApplicationWindow {
             }
         }
     }
-
-    // ---------------------------------------------------------------------
-    // context menus
-    // ---------------------------------------------------------------------
-
     function confirmEmptyTrash() {
         confirmDialog.ask(qsTr("Empty the trash?"), qsTr("All items in the trash will be permanently deleted."),
             qsTr("Empty Trash"), function() { core.empty_trash(); });
@@ -2199,8 +2144,6 @@ ApplicationWindow {
         menuMinWidth: 230
         menuMaxWidth: 340
     }
-
-    // Breadcrumb chip menu.
     LoafMenu {
         id: crumbMenu
         menuMinWidth: 200
@@ -2421,8 +2364,6 @@ ApplicationWindow {
             }
         }
     }
-
-    // Sidebar entry menu.
     LoafMenu {
         id: placeMenu
         menuMinWidth: 220
@@ -2447,8 +2388,6 @@ ApplicationWindow {
             openAt(x, y);
         }
     }
-
-    // Right-button drag drop menu.
     LoafMenu {
         id: rmbDropMenu
         menuMinWidth: 200
@@ -2466,8 +2405,6 @@ ApplicationWindow {
             openAt(px, py);
         }
     }
-
-    // View dropdown.
     LoafMenu {
         id: viewMenuPopup
         menuMinWidth: 290
@@ -2515,11 +2452,6 @@ ApplicationWindow {
         LoafSwitch { label: qsTr("Show Hidden Files"); checked: window.showHidden; onToggled: window.toggleShowHidden() }
         LoafSwitch { label: qsTr("Split View (F3)"); checked: window.splitView && window.activeView === "files"; onToggled: window.toggleSplit() }
     }
-
-    // ---------------------------------------------------------------------
-    // dialogs
-    // ---------------------------------------------------------------------
-
     QuickLook { id: quickLook }
     PropertiesDialog { id: propsDialog }
     BatchRenameDialog { id: batchRename }
@@ -2597,8 +2529,6 @@ ApplicationWindow {
                 window.activePane.selectPattern(text.trim());
         }
     }
-
-    // Passwords: encrypted archives (compress / extract) and LUKS drives.
     LoafDialog {
         id: passwordModal
         dialogWidth: 400
@@ -2678,8 +2608,6 @@ ApplicationWindow {
             LoafButton { text: passwordModal.request.kind === "compress" ? qsTr("Create") : qsTr("Unlock"); variant: "filled"; enabled: passwordModal.canAccept; onClicked: passwordModal.accept() }
         }
     }
-
-    // Generic confirmation.
     LoafDialog {
         id: confirmDialog
         dialogWidth: 420
@@ -2730,8 +2658,6 @@ ApplicationWindow {
             }
         }
     }
-
-    // Rename a sidebar entry or point it at another folder (issue #21).
     LoafDialog {
         id: placeEdit
         title: qsTr("Edit Sidebar Entry")
@@ -2768,8 +2694,6 @@ ApplicationWindow {
             }
         }
     }
-
-    // Show, hide and reorder every sidebar entry.
     LoafDialog {
         id: customizePlaces
         title: qsTr("Customize Sidebar")
@@ -2806,8 +2730,6 @@ ApplicationWindow {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     spacing: 10
-
-                    // Drag Indicator
                     Item {
                         width: 20; height: 32
                         LoafIcon {
@@ -2853,16 +2775,12 @@ ApplicationWindow {
                         elide: Text.ElideRight
                         opacity: placeRow.modelData.hidden ? 0.55 : 1.0
                     }
-
-                    // Show / Hide (Eye icon)
                     LoafButton {
                         icon: placeRow.modelData.hidden ? "eye-slash" : "eye"
                         variant: "text"
                         Accessible.name: placeRow.modelData.hidden ? qsTr("Show in sidebar") : qsTr("Hide from sidebar")
                         onClicked: core.set_place_hidden(placeRow.modelData.id, !placeRow.modelData.hidden)
                     }
-
-                    // Delete (Trash icon)
                     LoafButton {
                         icon: "trash"
                         variant: "text"
@@ -2921,8 +2839,6 @@ ApplicationWindow {
             }
         }
     }
-
-    // Customize Context Menu Dialog
     LoafDialog {
         id: customizeContextMenuDialog
         title: qsTr("Customize Context Menu Actions")
@@ -3019,8 +2935,6 @@ ApplicationWindow {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     spacing: 10
-
-                    // Drag Indicator
                     Item {
                         width: 20; height: 32
                         LoafIcon {
@@ -3067,8 +2981,6 @@ ApplicationWindow {
                         color: theme.textMuted
                         font.pixelSize: theme.fs(11)
                     }
-
-                    // Show / Hide (Eye icon)
                     LoafButton {
                         icon: actionRow.isHidden ? "eye-slash" : "eye"
                         variant: "text"

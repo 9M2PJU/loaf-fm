@@ -307,6 +307,10 @@ We welcome contributions of all kinds! Please see [CONTRIBUTING.md](CONTRIBUTING
 
 ---
 
+## How AI is used in this project
+
+
+
 ## License
 
 This project is licensed under the MIT License.

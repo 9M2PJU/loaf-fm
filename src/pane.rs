@@ -50,8 +50,6 @@ pub mod qobject {
         #[qproperty(bool, read_only)]
         type LoafEngine = super::PaneRust;
     }
-
-    // QAbstractItemModel plumbing.
     unsafe extern "RustQt" {
         #[inherit]
         #[cxx_name = "beginResetModel"]
@@ -483,10 +481,6 @@ fn dir_crumbs(target: &Path) -> Vec<Crumb> {
 }
 
 impl qobject::LoafEngine {
-    // ------------------------------------------------------------------
-    // model
-    // ------------------------------------------------------------------
-
     pub fn row_count(&self, _parent: &QModelIndex) -> i32 {
         self.rows.len() as i32
     }
@@ -590,11 +584,6 @@ impl qobject::LoafEngine {
         let rows = self.visible_rows();
         self.as_mut().apply_rows(rows, reset);
     }
-
-    // ------------------------------------------------------------------
-    // navigation
-    // ------------------------------------------------------------------
-
     fn update_location_props(mut self: Pin<&mut Self>) {
         let loc = self.loc.clone();
         let (title, crumbs): (String, Vec<Crumb>) = match &loc {
@@ -889,11 +878,6 @@ impl qobject::LoafEngine {
     pub fn open_starred(self: Pin<&mut Self>) {
         self.go_to(Loc::Starred, true);
     }
-
-    // ------------------------------------------------------------------
-    // search & filter
-    // ------------------------------------------------------------------
-
     pub fn search(mut self: Pin<&mut Self>, query: &QString, scope: &QString, contents: bool) {
         let q = query.to_string();
         if q.trim().is_empty() {
@@ -1031,11 +1015,6 @@ impl qobject::LoafEngine {
             self.as_mut().data_changed(&a, &b, &roles);
         }
     }
-
-    // ------------------------------------------------------------------
-    // tabs / session
-    // ------------------------------------------------------------------
-
     pub fn get_state(&self) -> QString {
         let loc = match (&self.loc, &self.before_search) {
             (Loc::Search { .. }, Some(prev)) => prev.to_string(),
@@ -1062,11 +1041,6 @@ impl qobject::LoafEngine {
             .unwrap_or_else(|| Loc::Dir(util::home()));
         self.go_to(loc, false);
     }
-
-    // ------------------------------------------------------------------
-    // row helpers for QML
-    // ------------------------------------------------------------------
-
     pub fn path_at(&self, row: i32) -> QString {
         self.rows.get(row.max(0) as usize).map(|e| QString::from(&*e.path)).unwrap_or_default()
     }

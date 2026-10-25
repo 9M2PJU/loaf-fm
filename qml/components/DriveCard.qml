@@ -82,8 +82,6 @@ Item {
     opacity: root.isMounted ? 1.0 : 0.8
     Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 140 } }
 
-    // ---- surfaces -----------------------------------------------------------
-
     Rectangle {
         id: card
         anchors.fill: parent
@@ -128,8 +126,6 @@ Item {
             PathArc { x: 12; y: 0; radiusX: 12; radiusY: 12 }
         }
     }
-
-    // ---- mounted content ----------------------------------------------------
 
     RowLayout {
         visible: root.isMounted
@@ -187,8 +183,6 @@ Item {
         }
     }
 
-    // ---- unmounted content --------------------------------------------------
-
     RowLayout {
         visible: !root.isMounted
         anchors.fill: parent
@@ -225,8 +219,6 @@ Item {
             }
         }
     }
-
-    // ---- interaction --------------------------------------------------------
 
     // Sits above the content so the whole card is clickable; the Mount button
     // below is raised above this MouseArea so it keeps its own clicks.

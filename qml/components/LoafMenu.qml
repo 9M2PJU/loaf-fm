@@ -58,8 +58,6 @@ LoafPopup {
         menu.resetRows();
     }
 
-    // ---- width measurement --------------------------------------------------
-
     TextMetrics { id: tmLabel; font.pixelSize: theme.fs(13) }
     TextMetrics { id: tmShortcut; font.pixelSize: theme.fs(11) }
 
@@ -94,8 +92,6 @@ LoafPopup {
         var cw = Math.max(menu.computeMeasuredWidth(), menu.menuMinWidth - 2 * menu.contentPadding);
         return Math.min(menu.menuMaxWidth, Math.ceil(cw + 2 * menu.contentPadding));
     }
-
-    // ---- row animation ------------------------------------------------------
 
     function animatableRows() {
         var out = [];
@@ -148,8 +144,6 @@ LoafPopup {
             list[i].reset();
     }
 
-    // ---- activation ---------------------------------------------------------
-
     function resolveSubmenu(entry) {
         if (!entry)
             return null;
@@ -192,8 +186,6 @@ LoafPopup {
         rowsView.positionViewAtIndex(index, ListView.Contain);
         return rowsView.itemAtIndex(index);
     }
-
-    // ---- cascading submenus -------------------------------------------------
 
     function ensureSubmenu() {
         if (menu.currentSubmenu)
@@ -260,8 +252,6 @@ LoafPopup {
             menu.currentSubmenu.close();
     }
 
-    // ---- keyboard -----------------------------------------------------------
-
     function isNestedMenu() {
         return menu.parentMenu !== null && menu.parentMenu !== undefined;
     }
@@ -311,8 +301,6 @@ LoafPopup {
         else
             menu.close();
     }
-
-    // ---- rows ---------------------------------------------------------------
 
     // Rows live in a ListView: only visible rows are created (an app list
     // can hold hundreds of entries) and it scrolls past maxMenuHeight.

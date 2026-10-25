@@ -1,8 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import app.loaf
-
-// Radio button drawn with the theme colors.
 RadioButton {
     id: control
     spacing: 8
