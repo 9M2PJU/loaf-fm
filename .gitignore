@@ -5,10 +5,16 @@ result
 .opencode/
 .qmlls.ini
 
-# Packaging build intermediates
+# Packaging build outputs & intermediates
 packaging/bin/
 packaging/deb/build/
 packaging/arch/build/
 packaging/tarball/
 packaging/dist/Loaf.AppDir/
 packaging/dist/*.AppImage
+packaging/dist/*.tar.gz
+packaging/dist/*.pkg.tar.*
+packaging/dist/*.rpm
+packaging/dist/*.deb
+packaging/dist/loaf-v*
+packaging/dist/loaf-*
