@@ -9,6 +9,7 @@ pub mod listing;
 pub mod native;
 pub mod pane;
 pub mod search;
+pub mod share;
 pub mod state;
 pub mod theme;
 pub mod trash;

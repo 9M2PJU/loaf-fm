@@ -31,6 +31,7 @@ pub mod qobject {
         #[qproperty(QString, undo_text)]
         #[qproperty(QString, redo_text)]
         #[qproperty(bool, trash_empty)]
+        #[qproperty(bool, cloudflared_ready)]
         /// Little RAM or few CPU cores: low-power mode's "Auto" turns on.
         #[qproperty(bool, low_end_hardware)]
         type LoafCore = super::CoreRust;
@@ -49,6 +50,12 @@ pub mod qobject {
         fn dir_size_ready(self: Pin<&mut LoafCore>, key: QString, info_json: QString);
         #[qsignal]
         fn starred_changed(self: Pin<&mut LoafCore>);
+        #[qsignal]
+        fn share_link_ready(self: Pin<&mut LoafCore>, share_id: QString, url: QString);
+        #[qsignal]
+        fn share_link_error(self: Pin<&mut LoafCore>, message: QString);
+        #[qsignal]
+        fn cloudflared_status_changed(self: Pin<&mut LoafCore>, installed: bool);
     }
 
     unsafe extern "RustQt" {
@@ -200,6 +207,20 @@ pub mod qobject {
         fn undo(self: Pin<&mut LoafCore>);
         #[qinvokable]
         fn redo(self: Pin<&mut LoafCore>);
+
+        // share via link & cloudflared management
+        #[qinvokable]
+        fn is_cloudflared_installed(self: &LoafCore) -> bool;
+        #[qinvokable]
+        fn install_cloudflared(self: Pin<&mut LoafCore>);
+        #[qinvokable]
+        fn start_share(self: Pin<&mut LoafCore>, paths_json: &QString);
+        #[qinvokable]
+        fn list_shares_json(self: &LoafCore) -> QString;
+        #[qinvokable]
+        fn stop_share(self: Pin<&mut LoafCore>, share_id: &QString) -> bool;
+        #[qinvokable]
+        fn remove_share(self: Pin<&mut LoafCore>, share_id: &QString) -> bool;
     }
 
     impl cxx_qt::Threading for LoafCore {}
@@ -208,6 +229,7 @@ pub mod qobject {
 
 use crate::archive::{self, ArchiveError};
 use crate::fsops::{self, Monitor};
+use crate::share;
 use crate::{apps, drives, icons, info, native, state, theme, trash, util, watcher, xdg};
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, CxxQtType, Threading};
@@ -317,6 +339,7 @@ pub struct CoreRust {
     undo_text: QString,
     redo_text: QString,
     trash_empty: bool,
+    cloudflared_ready: bool,
     low_end_hardware: bool,
 
     ops: Vec<Arc<Op>>,
@@ -349,6 +372,7 @@ impl Default for CoreRust {
             undo_text: QString::default(),
             redo_text: QString::default(),
             trash_empty: true,
+            cloudflared_ready: share::is_cloudflared_installed(),
             low_end_hardware: is_low_end_hardware(),
             ops: Vec::new(),
             next_op: 1,
@@ -1725,6 +1749,86 @@ impl qobject::LoafCore {
             o.is_redo = !is_undo;
             o
         });
+    }
+
+    pub fn is_cloudflared_installed(&self) -> bool {
+        share::is_cloudflared_installed()
+    }
+
+    pub fn install_cloudflared(self: Pin<&mut Self>) {
+        let thread = self.qt_thread();
+        share::ensure_cloudflared_installed(Box::new(move |ok, msg| {
+            let _ = thread.queue(move |mut core| {
+                core.as_mut().set_cloudflared_ready(ok);
+                core.as_mut().cloudflared_status_changed(ok);
+                if ok {
+                    core.as_mut().notify(q("info"), q("Cloudflare Tunnel agent installed successfully"));
+                } else if !msg.is_empty() {
+                    core.as_mut().notify(q("error"), q(&format!("Failed to install cloudflared: {}", msg)));
+                }
+            });
+        }));
+    }
+
+    pub fn start_share(self: Pin<&mut Self>, paths_json: &QString) {
+        let paths = parse_paths(paths_json);
+        if paths.is_empty() {
+            return;
+        }
+
+        // Read settings
+        let compress_folders = match self.get_setting(&q("shareCompressFolders")).to_string().as_str() {
+            "false" => false,
+            _ => true,
+        };
+        let compress_files = match self.get_setting(&q("shareCompressFiles")).to_string().as_str() {
+            "true" => true,
+            _ => false,
+        };
+        let format = match self.get_setting(&q("shareCompressFormat")).to_string().as_str() {
+            "7z" => "7z".to_string(),
+            "tar.gz" => "tar.gz".to_string(),
+            _ => "zip".to_string(),
+        };
+        let password = self.get_setting(&q("sharePassword")).to_string();
+        let expiration_hours = self.get_setting(&q("shareExpirationHours")).to_string().parse::<u32>().unwrap_or(24);
+        let throttle_kbps = self.get_setting(&q("shareThrottleKbps")).to_string().parse::<u32>().unwrap_or(0);
+
+        let params = share::CreateShareParams {
+            paths,
+            compress_folders,
+            compress_files,
+            format,
+            password,
+            expiration_hours,
+            throttle_kbps,
+        };
+
+        let thread = self.qt_thread();
+        share::start_share_pipeline(params, move |result| {
+            let _ = thread.queue(move |mut core| {
+                match result {
+                    Ok((id, url)) => {
+                        core.as_mut().share_link_ready(q(&id), q(&url));
+                    }
+                    Err(e) => {
+                        core.as_mut().share_link_error(q(&e));
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn list_shares_json(&self) -> QString {
+        q(&share::get_manager().list_shares_json())
+    }
+
+    pub fn stop_share(self: Pin<&mut Self>, share_id: &QString) -> bool {
+        share::get_manager().stop_share(&share_id.to_string())
+    }
+
+    pub fn remove_share(self: Pin<&mut Self>, share_id: &QString) -> bool {
+        share::get_manager().remove_share(&share_id.to_string())
     }
 }
 

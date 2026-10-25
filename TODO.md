@@ -30,6 +30,16 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 
 ---
 
+## Animation & Performance
+- [ ] **Complete Animation Overhaul**: Remake all UI transitions, spring physics, hover micro-interactions, modal reveals, and layout state shifts for maximum consistency, 60+ FPS performance, and visual polish.
+
+---
+
+## Localization & Internationalization
+- [ ] **Multi-Language Support (i18n)**: Full localization pipeline supporting multiple UI languages, locale-aware date/number formatting, and right-to-left layout support.
+
+---
+
 ## Drives & System Storage Overview
 - [x] **"This PC" / Drives Hub**: Centralized system storage dashboard (inspired by `nautilus-my-computer`):
   - Categorized display for internal partitions, external USB drives, and active network mounts.
@@ -93,8 +103,11 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 ---
 
 ## Integrations & Context Actions
+- [ ] **Syncthing Integration**: Native integration with Syncthing to show folder sync status, manage shared folders, and control sync settings directly inside Loaf.
 - [ ] **Device Sharing (LocalSend, KDE Connect & Bluetooth)**: Send selected files directly to local devices via LocalSend, KDE Connect, or Bluetooth file transfer.
-- [ ] **Send by Link**: Upload file to a free hosting service (e.g. Catbox / GoFile), generate and shorten a shareable download link, and copy it to clipboard.
+- [x] **Share via Link (Local Host / Cloudflare Tunnel)**: Instant peer-to-peer link sharing served directly from the user's machine via an on-demand Cloudflare Tunnel without third-party cloud storage limits. Includes configurable compression (.zip, .7z, .tar.gz), optional password encryption, link expiration, bandwidth throttling, and an active shares manager.
+- [ ] **Share via Link (Dedicated Server / Cloud Backend)**: Upload-and-host file sharing to a dedicated backend server (e.g. self-hosted on home server or VPS) with automatic 24-hour expiration sweeps, chunked streaming for 10–50GB+ large files, and direct download links.
+- [ ] **Custom & Pickable Share URLs**: Ability to select from multiple public URL formats and custom domains when sharing (e.g. default trycloudflare tunnel URL, `loaf.muvex.dev/send/<filename>`, `muvex.dev/loafshare/<filename>`, and custom branded variants).
 - [ ] **HTML Live Server**: Context menu action on `.html` files or web folders to spin up an instant localhost server and open in browser.
 - [ ] **Git Integration**: In git repositories, display repository info/commits, and provide a Git submenu in folder context menus (Sync, Pull, Push, Open on GitHub/GitLab).
 - [x] **Nautilus Scripts Support**: Full compatibility with standard Nautilus scripts system.
@@ -111,3 +124,7 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 
 ## Web & Landing Page
 - [ ] **Landing Page (`loaf.muvex.dev`)**: Build and publish a clean landing page website for `loaf` at `loaf.muvex.dev`.
+
+## Recently Added (Pluto Request)
+- [ ] **Integrated Terminal**: Embedded terminal panel that opens up inside Loaf and matches the app's styling/theme.
+- [ ] **Direct File Viewer & Editor**: View and edit support for certain file formats (such as `.md`) directly inside the app.

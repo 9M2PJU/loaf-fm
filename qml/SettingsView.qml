@@ -41,20 +41,23 @@ Item {
     readonly property bool card16Match: matchesQuery("restore session tabs remember last folder window startup")
     readonly property bool card17Match: matchesQuery("click rename inline single click")
     readonly property bool card18Match: matchesQuery("search file contents text inside")
+    readonly property bool card19Match: matchesQuery("experimental share via link cloudflare tunnel p2p host local send")
+    readonly property bool card20Match: matchesQuery("share settings link compression password expiration throttle active shares cloudflare tunnel")
 
     readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
         + (card16Match ? 1 : 0) + (card17Match ? 1 : 0) + (card18Match ? 1 : 0)
     readonly property int accessibilityMatches: (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
-    readonly property int experimentalMatches: (card10Match ? 1 : 0) + (card12Match ? 1 : 0)
+    readonly property int experimentalMatches: (card10Match ? 1 : 0) + (card12Match ? 1 : 0) + (card19Match ? 1 : 0)
+    readonly property int shareMatches: theme.shareViaLinkEnabled && card20Match ? 1 : 0
     readonly property int aboutMatches: (card11Match ? 1 : 0)
-    readonly property int totalMatches: interfaceMatches + behaviorMatches + accessibilityMatches + experimentalMatches + aboutMatches
+    readonly property int totalMatches: interfaceMatches + behaviorMatches + accessibilityMatches + experimentalMatches + shareMatches + aboutMatches
 
     // Space still claimed above `panel` by panels that are painted while fading
     // out. Overlapping the incoming tab with the outgoing one lets the switch
     // cross-fade instead of dropping the outgoing panel in one frame.
     function fadeOverlapAbove(panel) {
-        var panels = [tabInterface, tabBehavior, tabAccessibility, tabExperimental, tabAbout];
+        var panels = [tabInterface, tabBehavior, tabAccessibility, tabExperimental, tabShare, tabAbout];
         var overlap = 0;
         for (var i = 0; i < panels.length; i++) {
             var p = panels[i];
@@ -110,7 +113,23 @@ Item {
                         height: tabNavList.rowHeight
                         radius: theme.radiusFull
                         color: theme.primaryContainer
-                        y: Math.max(0, Math.min(settingsView.activeTab, tabNavRepeater.count - 1)) * (tabNavList.rowHeight + tabNavList.rowGap)
+                        y: {
+                            var targetIdx = 0;
+                            var m = tabNavRepeater.model || [];
+                            for (var i = 0; i < m.length; i++) {
+                                var tabId = m[i].id;
+                                if ((tabId === "interface" && settingsView.activeTab === 0) ||
+                                    (tabId === "behavior" && settingsView.activeTab === 1) ||
+                                    (tabId === "accessibility" && settingsView.activeTab === 2) ||
+                                    (tabId === "experimental" && settingsView.activeTab === 3) ||
+                                    (tabId === "share" && settingsView.activeTab === 5) ||
+                                    (tabId === "about" && settingsView.activeTab === 4)) {
+                                    targetIdx = i;
+                                    break;
+                                }
+                            }
+                            return targetIdx * (tabNavList.rowHeight + tabNavList.rowGap);
+                        }
 
                         Behavior on y { enabled: theme.animate; NumberAnimation { duration: theme.durationNormal; easing.type: Easing.OutCubic } }
                         Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
@@ -118,20 +137,35 @@ Item {
 
                     Repeater {
                         id: tabNavRepeater
-                        model: [
-                            { name: "Interface", iconName: "palette" },
-                            { name: "Behavior", iconName: "gear" },
-                            { name: "Accessibility", iconName: "person-arms-spread" },
-                            { name: "Experimental", iconName: "sparkle" },
-                            { name: "About Loaf", iconName: "bread" }
-                        ]
+                        model: {
+                            var tabs = [
+                                { id: "interface", name: "Interface", iconName: "palette" },
+                                { id: "behavior", name: "Behavior", iconName: "gear" },
+                                { id: "accessibility", name: "Accessibility", iconName: "person-arms-spread" },
+                                { id: "experimental", name: "Experimental", iconName: "sparkle" }
+                            ];
+                            if (theme.shareViaLinkEnabled) {
+                                tabs.push({ id: "share", name: "Share", iconName: "share-network" });
+                            }
+                            tabs.push({ id: "about", name: "About Loaf", iconName: "bread" });
+                            return tabs;
+                        }
 
                         delegate: Item {
                             width: tabNavList.width
                             height: tabNavList.rowHeight
                             y: index * (tabNavList.rowHeight + tabNavList.rowGap)
 
-                            readonly property bool isCurrent: settingsView.activeTab === index
+                            readonly property bool isCurrent: {
+                                var currentTabId = tabNavRepeater.model[index] ? tabNavRepeater.model[index].id : "";
+                                if (currentTabId === "interface") return settingsView.activeTab === 0;
+                                if (currentTabId === "behavior") return settingsView.activeTab === 1;
+                                if (currentTabId === "accessibility") return settingsView.activeTab === 2;
+                                if (currentTabId === "experimental") return settingsView.activeTab === 3;
+                                if (currentTabId === "share") return settingsView.activeTab === 5;
+                                if (currentTabId === "about") return settingsView.activeTab === 4;
+                                return false;
+                            }
                             readonly property bool isHovered: tabMouse.containsMouse
 
                             Rectangle {
@@ -173,7 +207,13 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     settingsView.searchCleared();
-                                    settingsView.activeTab = index;
+                                    var tabId = tabNavRepeater.model[index].id;
+                                    if (tabId === "interface") settingsView.activeTab = 0;
+                                    else if (tabId === "behavior") settingsView.activeTab = 1;
+                                    else if (tabId === "accessibility") settingsView.activeTab = 2;
+                                    else if (tabId === "experimental") settingsView.activeTab = 3;
+                                    else if (tabId === "share") settingsView.activeTab = 5;
+                                    else if (tabId === "about") settingsView.activeTab = 4;
                                 }
                             }
                         }
@@ -210,7 +250,7 @@ Item {
                     Text {
                         text: settingsView.searchQuery.length > 0
                             ? "Settings"
-                            : (settingsView.activeTab === 0 ? "Interface" : (settingsView.activeTab === 1 ? "Behavior" : (settingsView.activeTab === 2 ? "Accessibility" : (settingsView.activeTab === 3 ? "Experimental" : "About Loaf"))))
+                            : (settingsView.activeTab === 0 ? "Interface" : (settingsView.activeTab === 1 ? "Behavior" : (settingsView.activeTab === 2 ? "Accessibility" : (settingsView.activeTab === 3 ? "Experimental" : (settingsView.activeTab === 5 ? "Share via Link" : "About Loaf")))))
                         color: theme.textMain
                         font.pixelSize: theme.fs(26)
                         font.bold: true
@@ -1147,6 +1187,428 @@ Item {
                                 function onExperimentalPcCustomizationChanged() {
                                     if (pcCustomSwitch.checked !== theme.experimentalPcCustomization)
                                         pcCustomSwitch.checked = theme.experimentalPcCustomization
+                                }
+                            }
+                        }
+
+                        // Share via Link (Cloudflare Tunnel P2P)
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            implicitHeight: expShareRow.implicitHeight + 32
+                            radius: theme.radiusL
+                            color: theme.surfaceContainer
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
+
+                            GridLayout {
+                                id: expShareRow
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                columnSpacing: 14
+                                rowSpacing: 10
+                                columns: (width - 14 - shareViaLinkSwitch.implicitWidth) >= 170 ? 2 : 1
+
+                                ColumnLayout {
+                                    spacing: 3
+                                    Layout.fillWidth: true
+                                    Text { text: qsTr("Share via Link"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Enable direct link sharing using Cloudflare Tunnel and unlock the Share settings tab"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                }
+
+                                LoafSwitch {
+                                    id: shareViaLinkSwitch
+                                    Layout.alignment: Qt.AlignRight
+                                    checked: theme.shareViaLinkEnabled
+                                    onToggled: {
+                                        theme.shareViaLinkEnabled = checked;
+                                        if (checked && typeof core !== "undefined" && core) {
+                                            if (!core.is_cloudflared_installed()) {
+                                                core.install_cloudflared();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Connections {
+                                target: theme
+                                function onShareViaLinkEnabledChanged() {
+                                    if (shareViaLinkSwitch.checked !== theme.shareViaLinkEnabled)
+                                        shareViaLinkSwitch.checked = theme.shareViaLinkEnabled
+                                }
+                            }
+                        }
+                    }
+
+                    // ==========================================
+                    // TAB 5: SHARE VIA LINK SETTINGS
+                    // ==========================================
+                    ColumnLayout {
+                        id: tabShare
+                        Layout.fillWidth: true
+                        spacing: 14
+
+                        readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.shareMatches > 0) : (theme.shareViaLinkEnabled && settingsView.activeTab === 5)
+                        readonly property real fadeOverlap: settingsView.fadeOverlapAbove(tabShare)
+                        property real slideOffset: shown ? 0 : 6
+
+                        Layout.topMargin: -fadeOverlap
+                        Layout.bottomMargin: fadeOverlap
+
+                        visible: shown || opacity > 0.001
+                        opacity: shown ? 1.0 : 0.0
+                        enabled: shown
+
+                        Behavior on opacity { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        Behavior on slideOffset { enabled: theme.animate; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                        transform: Translate { y: tabShare.slideOffset }
+
+                        // ==========================================
+                        // 1. Share Provider
+                        // ==========================================
+                        SettingCard {
+                            title: qsTr("Share Provider")
+                            subtitle: qsTr("Choose how files are hosted when sharing via link")
+
+                            RowLayout {
+                                spacing: 16
+
+                                LoafRadio {
+                                    id: radioOwnMachine
+                                    text: qsTr("Own Machine")
+                                    checked: theme.shareProvider === "local"
+                                    onToggled: if (checked) theme.shareProvider = "local"
+                                }
+
+                                Item {
+                                    implicitWidth: radioCloud.implicitWidth
+                                    implicitHeight: radioCloud.implicitHeight
+
+                                    LoafRadio {
+                                        id: radioCloud
+                                        text: qsTr("Loaf Cloud")
+                                        enabled: false
+                                        opacity: 0.4
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        ToolTip.visible: containsMouse
+                                        ToolTip.text: qsTr("Coming Soon")
+                                        ToolTip.delay: 300
+                                    }
+                                }
+                            }
+                        }
+
+                        // ==========================================
+                        // 2. Tunnel Agent Status
+                        // ==========================================
+                        SettingCard {
+                            title: qsTr("Cloudflare Tunnel agent")
+                            subtitle: (typeof core !== "undefined" && core && core.cloudflared_ready)
+                                ? qsTr("The tunnel daemon (cloudflared) is installed and ready")
+                                : qsTr("Used to securely expose your shared files without port forwarding")
+
+                            RowLayout {
+                                spacing: 10
+                                Rectangle {
+                                    height: 26
+                                    radius: theme.radiusFull
+                                    color: (typeof core !== "undefined" && core && core.cloudflared_ready)
+                                        ? theme.primaryContainer : theme.surfaceContainerHighest
+                                    width: tunnelStatusRow.implicitWidth + 18
+
+                                    RowLayout {
+                                        id: tunnelStatusRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        LoafIcon {
+                                            name: (typeof core !== "undefined" && core && core.cloudflared_ready) ? "check-circle" : "arrow-circle-down"
+                                            size: 14
+                                            color: (typeof core !== "undefined" && core && core.cloudflared_ready) ? theme.primaryContainerFg : theme.textMuted
+                                        }
+                                        Text {
+                                            text: (typeof core !== "undefined" && core && core.cloudflared_ready) ? qsTr("Ready") : qsTr("Not installed")
+                                            color: (typeof core !== "undefined" && core && core.cloudflared_ready) ? theme.primaryContainerFg : theme.textMuted
+                                            font.pixelSize: theme.fs(11)
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+
+                                LoafButton {
+                                    text: (typeof core !== "undefined" && core && core.cloudflared_ready) ? qsTr("Reinstall") : qsTr("Install Now")
+                                    variant: "tonal"
+                                    icon: "download-simple"
+                                    onClicked: core.install_cloudflared()
+                                }
+                            }
+                        }
+
+                        // ==========================================
+                        // 3. Compression Rules
+                        // ==========================================
+                        SettingCard {
+                            title: qsTr("Compress folders")
+                            subtitle: qsTr("Automatically bundle folders into an archive before sharing")
+                            LoafSwitch {
+                                checked: theme.shareCompressFolders
+                                onToggled: function(c) { theme.shareCompressFolders = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Compress single files")
+                            subtitle: qsTr("Compress individual files to minimize bandwidth and transfer size")
+                            LoafSwitch {
+                                checked: theme.shareCompressFiles
+                                onToggled: function(c) { theme.shareCompressFiles = c; }
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Archive format")
+                            subtitle: qsTr("Compression format used for generated share archives")
+
+                            LoafSegmented {
+                                Layout.preferredWidth: 260
+                                options: [
+                                    { value: "zip", label: ".zip" },
+                                    { value: "7z", label: ".7z" },
+                                    { value: "tar.gz", label: ".tar.gz" }
+                                ]
+                                value: theme.shareCompressFormat
+                                onSelected: function(v) { theme.shareCompressFormat = v; }
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Archive password")
+                            subtitle: qsTr("Optional password protection for created .zip or .7z archives")
+
+                            LoafTextField {
+                                Layout.preferredWidth: 220
+                                echoMode: TextInput.Password
+                                placeholderText: qsTr("No password")
+                                text: theme.sharePassword
+                                onTextChanged: theme.sharePassword = text
+                            }
+                        }
+
+                        // ==========================================
+                        // 4. Expiration & Throttling
+                        // ==========================================
+                        SettingCard {
+                            title: qsTr("Link expiration")
+                            subtitle: qsTr("Automatically shut down the stream and revoke the link after this period")
+
+                            LoafSegmented {
+                                Layout.preferredWidth: 320
+                                options: [
+                                    { value: 1, label: qsTr("1 Hour") },
+                                    { value: 6, label: qsTr("6 Hours") },
+                                    { value: 24, label: qsTr("24 Hours") },
+                                    { value: 0, label: qsTr("Never") }
+                                ]
+                                value: theme.shareExpirationHours
+                                onSelected: function(v) { theme.shareExpirationHours = v; }
+                            }
+                        }
+
+                        SettingCard {
+                            title: qsTr("Bandwidth throttle")
+                            subtitle: qsTr("Limit upload rate to prevent file sharing from saturating your network")
+
+                            RowLayout {
+                                spacing: 8
+                                LoafTextField {
+                                    Layout.preferredWidth: 130
+                                    placeholderText: qsTr("Unlimited")
+                                    text: theme.shareThrottleKbps > 0 ? theme.shareThrottleKbps.toString() : ""
+                                    onTextChanged: {
+                                        var val = parseInt(text) || 0;
+                                        theme.shareThrottleKbps = val;
+                                    }
+                                }
+                                Text {
+                                    text: "KB/s"
+                                    color: theme.textMuted
+                                    font.pixelSize: theme.fs(12)
+                                }
+                            }
+                        }
+
+                        // ==========================================
+                        // 5. Active Shares Manager
+                        // ==========================================
+                        Rectangle {
+                            id: activeSharesPanel
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            implicitHeight: activeSharesCol.implicitHeight + 32
+                            radius: theme.radiusL
+                            color: theme.surfaceContainer
+                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
+
+                            property var sharesList: []
+
+                            function refreshShares() {
+                                if (typeof core !== "undefined" && core) {
+                                    try {
+                                        sharesList = JSON.parse(core.list_shares_json() || "[]");
+                                    } catch (e) {
+                                        sharesList = [];
+                                    }
+                                }
+                            }
+
+                            Timer {
+                                interval: 2000
+                                running: tabShare.shown
+                                repeat: true
+                                triggeredOnStart: true
+                                onTriggered: activeSharesPanel.refreshShares()
+                            }
+
+                            ColumnLayout {
+                                id: activeSharesCol
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 14
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    ColumnLayout {
+                                        spacing: 3
+                                        Text { text: qsTr("Active Shares"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true }
+                                        Text { text: qsTr("Files currently being served from your machine"); color: theme.textMuted; font.pixelSize: theme.fs(11) }
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    LoafButton {
+                                        text: qsTr("Refresh")
+                                        icon: "arrow-clockwise"
+                                        variant: "tonal"
+                                        onClicked: activeSharesPanel.refreshShares()
+                                    }
+                                }
+
+                                Text {
+                                    visible: activeSharesPanel.sharesList.length === 0
+                                    text: qsTr("No active shares right now.")
+                                    color: theme.textMuted
+                                    font.pixelSize: theme.fs(12)
+                                    font.italic: true
+                                    Layout.topMargin: 4
+                                    Layout.bottomMargin: 4
+                                }
+
+                                Repeater {
+                                    model: activeSharesPanel.sharesList
+                                    delegate: Rectangle {
+                                        Layout.fillWidth: true
+                                        implicitHeight: shareItemRow.implicitHeight + 20
+                                        radius: theme.radiusM
+                                        color: theme.surfaceContainerHigh
+                                        border.width: 1
+                                        border.color: theme.borderSubtle
+
+                                        RowLayout {
+                                            id: shareItemRow
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: 12
+
+                                            LoafIcon {
+                                                name: modelData.is_archive ? "file-archive" : "file"
+                                                size: 24
+                                                color: theme.primary
+                                            }
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 3
+
+                                                RowLayout {
+                                                    spacing: 8
+                                                    Text {
+                                                        text: modelData.name
+                                                        color: theme.textMain
+                                                        font.pixelSize: theme.fs(13)
+                                                        font.bold: true
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    Rectangle {
+                                                        radius: 4
+                                                        implicitWidth: stText.implicitWidth + 8
+                                                        implicitHeight: stText.implicitHeight + 4
+                                                        color: modelData.status === "ready" ? theme.primaryContainer : theme.surfaceContainerHighest
+                                                        Text {
+                                                            id: stText
+                                                            anchors.centerIn: parent
+                                                            text: modelData.status.toUpperCase()
+                                                            color: modelData.status === "ready" ? theme.primaryContainerFg : theme.textMuted
+                                                            font.pixelSize: theme.fs(9)
+                                                            font.bold: true
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    visible: modelData.url.length > 0
+                                                    text: modelData.url
+                                                    color: theme.primary
+                                                    font.pixelSize: theme.fs(11)
+                                                    elide: Text.ElideMiddle
+                                                    Layout.fillWidth: true
+                                                }
+
+                                                Text {
+                                                    text: qsTr("Size: %1 · Downloads: %2 · Sent: %3")
+                                                        .arg(theme.formatBytes(modelData.size_bytes))
+                                                        .arg(modelData.download_count)
+                                                        .arg(theme.formatBytes(modelData.bytes_sent))
+                                                    color: theme.textMuted
+                                                    font.pixelSize: theme.fs(11)
+                                                }
+                                            }
+
+                                            LoafButton {
+                                                text: qsTr("Copy Link")
+                                                icon: "copy"
+                                                variant: "outline"
+                                                visible: modelData.url.length > 0
+                                                onClicked: {
+                                                    native.setClipboardText(modelData.url);
+                                                    if (typeof window !== "undefined" && window.toast)
+                                                        window.toast("info", qsTr("Link copied to clipboard"));
+                                                }
+                                            }
+
+                                            LoafButton {
+                                                text: qsTr("Stop")
+                                                icon: "stop"
+                                                variant: "danger"
+                                                visible: modelData.status === "ready" || modelData.status === "starting"
+                                                onClicked: {
+                                                    core.stop_share(modelData.id);
+                                                    activeSharesPanel.refreshShares();
+                                                }
+                                            }
+
+                                            LoafButton {
+                                                text: qsTr("Remove")
+                                                icon: "trash"
+                                                variant: "ghost"
+                                                visible: modelData.status === "expired" || modelData.status === "error"
+                                                onClicked: {
+                                                    core.remove_share(modelData.id);
+                                                    activeSharesPanel.refreshShares();
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

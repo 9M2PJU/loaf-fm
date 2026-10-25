@@ -13,6 +13,14 @@ Item {
     property bool showExperimentalIcons: false
     property bool showAdvancedArchives: false
     property bool experimentalPcCustomization: false
+    property bool shareViaLinkEnabled: false
+    property string shareProvider: "local" // "local" (Cloudflare Tunnel), "cloud" (Loaf Cloud - coming soon)
+    property bool shareCompressFolders: true
+    property bool shareCompressFiles: false
+    property string shareCompressFormat: "zip" // "zip", "7z", "tar.gz"
+    property string sharePassword: ""
+    property int shareExpirationHours: 24 // 0 for disabled
+    property int shareThrottleKbps: 0 // 0 for unlimited
     property string contextMenuMode: "full" // "full", "minimal", "custom"
     property var disabledMenuItems: ({})
     property bool hideTrashWhenEmpty: true
@@ -26,6 +34,18 @@ Item {
         || (lowPowerSetting === "auto" && (softwareRendering || (typeof core !== "undefined" && core && core.low_end_hardware)))
     // Every Behavior / transition checks this; false makes changes instant.
     readonly property bool animate: !reduceMotionSetting && !lowPower
+
+    function formatBytes(bytes) {
+        var b = Number(bytes) || 0;
+        var gb = 1024 * 1024 * 1024;
+        var tb = 1024 * gb;
+        var mb = 1024 * 1024;
+        if (b >= tb) return (b / tb).toFixed(1) + " TB";
+        if (b >= gb) return (b / gb).toFixed(1) + " GB";
+        if (b >= mb) return (b / mb).toFixed(1) + " MB";
+        if (b > 0) return (b / 1024).toFixed(0) + " KB";
+        return "0 B";
+    }
 
     // Icon size in the file views (Ctrl + scroll / Ctrl +/-).
     readonly property var zoomLevels: [0.75, 0.875, 1.0, 1.25, 1.5, 2.0, 4.0, 6.0, 8.0]
@@ -2002,6 +2022,30 @@ Item {
         if (value.length > 0) showAdvancedArchives = (value === "true");
         value = readSetting("experimentalPcCustomization");
         if (value.length > 0) experimentalPcCustomization = (value === "true");
+
+        value = readSetting("shareViaLinkEnabled");
+        if (value.length > 0) shareViaLinkEnabled = (value === "true");
+
+        value = readSetting("shareProvider");
+        if (value.length > 0) shareProvider = value;
+
+        value = readSetting("shareCompressFolders");
+        if (value.length > 0) shareCompressFolders = (value === "true");
+
+        value = readSetting("shareCompressFiles");
+        if (value.length > 0) shareCompressFiles = (value === "true");
+
+        value = readSetting("shareCompressFormat");
+        if (value.length > 0) shareCompressFormat = value;
+
+        value = readSetting("sharePassword");
+        if (value.length > 0) sharePassword = value;
+
+        value = readSetting("shareExpirationHours");
+        if (value.length > 0) shareExpirationHours = parseInt(value) || 0;
+
+        value = readSetting("shareThrottleKbps");
+        if (value.length > 0) shareThrottleKbps = parseInt(value) || 0;
         value = readSetting("lowPower");
         if (value.length > 0) lowPowerSetting = value;
         value = readSetting("reduceMotion");
@@ -2043,6 +2087,14 @@ Item {
     onShowExperimentalIconsChanged: writeSetting("showExperimentalIcons", showExperimentalIcons)
     onShowAdvancedArchivesChanged: writeSetting("showAdvancedArchives", showAdvancedArchives)
     onExperimentalPcCustomizationChanged: writeSetting("experimentalPcCustomization", experimentalPcCustomization)
+    onShareViaLinkEnabledChanged: writeSetting("shareViaLinkEnabled", shareViaLinkEnabled)
+    onShareProviderChanged: writeSetting("shareProvider", shareProvider)
+    onShareCompressFoldersChanged: writeSetting("shareCompressFolders", shareCompressFolders)
+    onShareCompressFilesChanged: writeSetting("shareCompressFiles", shareCompressFiles)
+    onShareCompressFormatChanged: writeSetting("shareCompressFormat", shareCompressFormat)
+    onSharePasswordChanged: writeSetting("sharePassword", sharePassword)
+    onShareExpirationHoursChanged: writeSetting("shareExpirationHours", shareExpirationHours)
+    onShareThrottleKbpsChanged: writeSetting("shareThrottleKbps", shareThrottleKbps)
     onLowPowerSettingChanged: writeSetting("lowPower", lowPowerSetting)
     onReduceMotionSettingChanged: writeSetting("reduceMotion", reduceMotionSetting)
     onZoomIndexChanged: writeSetting("zoomIndex", zoomIndex)

@@ -732,6 +732,13 @@ ApplicationWindow {
             }
         }
         onPassword_required: function(json) { passwordModal.openFor(JSON.parse(json)); }
+        onShare_link_ready: function(shareId, url) {
+            native.setClipboardText(url);
+            window.toast("info", qsTr("Share link copied to clipboard!"));
+        }
+        onShare_link_error: function(message) {
+            window.toast("error", qsTr("Could not share via link: ") + message);
+        }
         onStarred_changed: {
             pane0.engine.reload_starred();
             if (pane1Loader.item)
@@ -767,13 +774,13 @@ ApplicationWindow {
 
     // The settings tab is part of the URL: settings://behavior and friends.
     function settingsUrl() {
-        var slugs = ["interface", "behavior", "accessibility", "experimental", "about"];
+        var slugs = ["interface", "behavior", "accessibility", "experimental", "about", "share"];
         return "settings://" + (slugs[settingsView.activeTab] || slugs[0]);
     }
 
     function settingsTabName() {
         var names = [qsTr("Interface"), qsTr("Behavior"), qsTr("Accessibility"),
-                     qsTr("Experimental"), qsTr("About Loaf")];
+                     qsTr("Experimental"), qsTr("About Loaf"), qsTr("Share")];
         return names[settingsView.activeTab] || names[0];
     }
 
@@ -803,6 +810,7 @@ ApplicationWindow {
             else if (raw === "settings://accessibility") settingsView.activeTab = 2;
             else if (raw === "settings://experimental") settingsView.activeTab = 3;
             else if (raw === "settings://about") settingsView.activeTab = 4;
+            else if (raw === "settings://share") settingsView.activeTab = 5;
             else settingsView.activeTab = 0;
         } else {
             showFiles();
@@ -2056,6 +2064,23 @@ ApplicationWindow {
                 m.push({ text: qsTr("Duplicate"), icon: "copy-simple", itemKey: "duplicate", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "copy", "rename"); } });
                 m.push({ text: qsTr("Make Link"), icon: "link", itemKey: "make_link", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "link", "rename"); } });
             }
+            if (theme.shareViaLinkEnabled) {
+                var shareSub = [
+                    {
+                        text: qsTr("Share via Link"),
+                        icon: "link",
+                        action: function() {
+                            if (!core.is_cloudflared_installed()) {
+                                window.toast("info", qsTr("Installing Cloudflare Tunnel agent..."));
+                                core.install_cloudflared();
+                            }
+                            window.toast("info", qsTr("Preparing link share..."));
+                            core.start_share(JSON.stringify(paths));
+                        }
+                    }
+                ];
+                m.push({ text: qsTr("Share…"), icon: "share-network", itemKey: "share", submenu: shareSub });
+            }
             m.push({ text: qsTr("Compress"), icon: "file-archive", itemKey: "compress", submenu: compressSubmenu(paths) });
 
             var starred = item.starred === true;
@@ -2917,6 +2942,7 @@ ApplicationWindow {
             { id: "rename", name: qsTr("Rename"), icon: "pencil-simple", shortcut: "F2" },
             { id: "duplicate", name: qsTr("Duplicate"), icon: "copy-simple", shortcut: "" },
             { id: "make_link", name: qsTr("Make Link"), icon: "link", shortcut: "" },
+            { id: "share", name: qsTr("Share…"), icon: "share-network", shortcut: "" },
             { id: "compress", name: qsTr("Compress"), icon: "file-archive", shortcut: "" },
             { id: "extract", name: qsTr("Extract"), icon: "archive", shortcut: "" },
             { id: "browse_archive", name: qsTr("Browse Archive"), icon: "folder-open", shortcut: "" },
