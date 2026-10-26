@@ -75,6 +75,7 @@
             cargo
             rustfmt
             clippy
+            patchelf
           ];
 
           buildInputs = [
