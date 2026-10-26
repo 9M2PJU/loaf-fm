@@ -247,7 +247,7 @@ void setup_engine(QQmlApplicationEngine &engine, const rust::Vec<rust::String> &
     if (translator->load(QLocale(), QStringLiteral("loaf"), QStringLiteral("_"), QStringLiteral(":/i18n")))
         QCoreApplication::installTranslator(translator);
 
-    engine.rootContext()->setContextProperty(QStringLiteral("native"), native);
+    engine.rootContext()->setContextProperty(QStringLiteral("nativeBridge"), native);
     engine.addImageProvider(QStringLiteral("thumb"), new ThumbnailProvider);
 }
 
