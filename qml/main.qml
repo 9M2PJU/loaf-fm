@@ -1383,6 +1383,13 @@ ApplicationWindow {
                             core.connect_smb(place.profile_id, "", false);
                         return;
                     }
+                    // Network bookmarks (remote URIs): Loaf can't
+                    // browse them internally, so hand them to the system handler.
+                    if (place.kind === "network") {
+                        if (place.path)
+                            core.open_uri(place.path);
+                        return;
+                    }
                     if (inNewTab && place.path) {
                         window.newTab(place.path);
                         return;

@@ -46,7 +46,7 @@ Loaf is designed to replace crowded, outdated file managers with an interface th
 - **Live Folders**: Changes made by other programs appear instantly (inotify), only the changed rows update.
 - **Thumbnails**: Images, videos, PDFs and fonts through the shared freedesktop thumbnail cache and system thumbnailers, loaded in the background.
 - **Search**: Filter the folder as you type, or search subfolders / your whole home folder in the background, optionally inside text files.
-- **Desktop Integration**: GTK bookmarks, localized user folders, Recent and Starred, Open With / default apps, templates ("New Document"), Nautilus scripts, system clipboard, "Show in folder" from other apps, Open as Administrator.
+- **Desktop Integration**: GTK bookmarks (including `sftp://`/`ftp://` network shortcuts shared with Nemo/Nautilus, opened with the system handler), localized user folders, Recent and Starred, Open With / default apps, templates ("New Document"), Nautilus scripts, system clipboard, "Show in folder" from other apps, Open as Administrator.
 - **Network Storage (SMB / Windows Share)**: Connect to SMB / CIFS shares (`smb://server/share`), manage named server profiles, authenticate with user/domain credentials, securely store credentials via system keyring, and browse remote network directories seamlessly.
 - **P2P File Sharing via Link**: Share files or compressed archives peer-to-peer using on-demand Cloudflare tunnels, optional password protection, expiration timers, and bandwidth rate-limiting.
 - **Low-Power Mode**: Turns off animations and effects automatically on machines without GPU acceleration or with little memory; reduce-motion and text-size settings for accessibility.
