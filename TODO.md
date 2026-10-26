@@ -87,7 +87,7 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 - [ ] **Customizable Toolbar & Layout**: Configurable toolbar actions and adjustable layout density.
 - [x] **Header Hierarchy & Layout Polish**: Branding badge vs breadcrumb path toggle and polish.
 - [~] **Mini / Compact Mode**: Ultra-compact layout mode showing only essential information for minimalist workflows. (`--mini` starts with a collapsed sidebar and smaller icons.)
-- [ ] **Background Opacity Control**: Adjustable window background opacity setting for transparent rice aesthetics.
+- [x] **Background Opacity Control**: Adjustable background opacity with opaque text and icons; desktop compositor supplies blur. See [usage and checks](docs/background-opacity.md).
 - [ ] **Customizable Directory Icons**: Override theme and app defaults for any directory's icon and color. Dedicated settings manager tab for viewing and bulk-customizing all custom folder icons.
 
 ---

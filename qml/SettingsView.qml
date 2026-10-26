@@ -23,6 +23,7 @@ Item {
     }
 
     readonly property bool card1Match: matchesQuery("theme appearance light dark auto mode color scheme")
+    readonly property bool opacityMatch: matchesQuery("background opacity transparency translucent translucency frosted blur appearance")
     readonly property bool card2Match: matchesQuery("theme palette accent colors wallpaper catppuccin nord tokyonight gruvbox rosepine amber lavender violet ricing")
     readonly property bool card4Match: matchesQuery("icon style vector phosphor system adwaita desktop theme")
     readonly property bool card5Match: matchesQuery("phosphor weight variant thin light regular bold fill duotone stroke thickness")
@@ -45,7 +46,7 @@ Item {
     readonly property bool card20Match: matchesQuery("share settings link compression password expiration throttle active shares cloudflare tunnel")
     readonly property bool card21Match: matchesQuery("network smb samba nas share server mount connect remote windows keyring")
 
-    readonly property int interfaceMatches: (card1Match ? 1 : 0) + (card2Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
+    readonly property int interfaceMatches: (card1Match ? 1 : 0) + (opacityMatch ? 1 : 0) + (card2Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
         + (card16Match ? 1 : 0) + (card17Match ? 1 : 0) + (card18Match ? 1 : 0)
     readonly property int accessibilityMatches: (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
@@ -78,7 +79,7 @@ Item {
             Layout.fillHeight: true
             Layout.preferredWidth: Math.max(128, Math.min(200, parent.width * 0.40))
             radius: theme.radiusL
-            color: theme.surfaceContainer
+            color: theme.backdropSurface(theme.surfaceContainer)
 
             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
 
@@ -229,7 +230,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: theme.radiusL
-            color: theme.surfaceContainerLow
+            color: theme.backdropSurface(theme.surfaceContainerLow)
             clip: true
 
             Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationNormal } }
@@ -449,6 +450,60 @@ Item {
                                             onClicked: theme.themeMode = "dark"
                                         }
                                     }
+                                }
+                            }
+                        }
+                        SettingCard {
+                            visible: settingsView.searchQuery.length === 0 || settingsView.opacityMatch
+                            Layout.maximumWidth: contentScroll.availableWidth
+                            title: qsTr("Background opacity")
+                            subtitle: theme.lowPower
+                                ? qsTr("Backgrounds stay solid in low-power mode")
+                                : qsTr("Keep text and icons solid. Blur depends on your desktop effects.")
+                            RowLayout {
+                                spacing: 12
+                                Slider {
+                                    id: backgroundOpacitySlider
+                                    Layout.preferredWidth: 120
+                                    implicitHeight: 36
+                                    from: 0.5
+                                    to: 1.0
+                                    stepSize: 0.01
+                                    value: theme.backgroundOpacity
+                                    enabled: !theme.lowPower
+                                    Accessible.name: qsTr("Background opacity")
+                                    onMoved: theme.backgroundOpacity = value
+                                    background: Rectangle {
+                                        x: backgroundOpacitySlider.leftPadding
+                                        y: backgroundOpacitySlider.topPadding + (backgroundOpacitySlider.availableHeight - height) / 2
+                                        width: backgroundOpacitySlider.availableWidth
+                                        height: 6
+                                        radius: 3
+                                        color: theme.surfaceContainerHighest
+                                        Rectangle {
+                                            width: backgroundOpacitySlider.position * parent.width
+                                            x: backgroundOpacitySlider.mirrored ? parent.width - width : 0
+                                            height: parent.height
+                                            radius: parent.radius
+                                            color: theme.primary
+                                        }
+                                    }
+                                    handle: Rectangle {
+                                        x: backgroundOpacitySlider.leftPadding + backgroundOpacitySlider.visualPosition * (backgroundOpacitySlider.availableWidth - width)
+                                        y: backgroundOpacitySlider.topPadding + (backgroundOpacitySlider.availableHeight - height) / 2
+                                        implicitWidth: 18
+                                        implicitHeight: 24
+                                        radius: 6
+                                        color: theme.primary
+                                        border.width: backgroundOpacitySlider.activeFocus ? 2 : 0
+                                        border.color: theme.textMain
+                                    }
+                                }
+                                Text {
+                                    text: Math.round(theme.effectiveBackgroundOpacity * 100) + "%"
+                                    color: theme.textMain
+                                    font.pixelSize: theme.fs(12)
+                                    Layout.minimumWidth: 38
                                 }
                             }
                         }

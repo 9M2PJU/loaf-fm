@@ -14,7 +14,7 @@ ApplicationWindow {
         ? qsTr("Settings")
         : activeView === "pc" ? (core.hostname || qsTr("This PC"))
         : (engine.is_searching_everywhere ? qsTr("Search") : engine.current_dir_name))
-    color: theme.background
+    color: theme.windowBackground
 
     // Mirror the whole layout for right-to-left languages.
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
@@ -1574,7 +1574,7 @@ ApplicationWindow {
                             width: paneRow.leftWidth
                             height: parent.height
                             radius: theme.radiusXl
-                            color: theme.surfaceContainerLow
+                            color: theme.backdropSurface(theme.surfaceContainerLow)
                             clip: true
                             border.width: (window.splitView && window.activePane === pane0) ? 2 : (window.splitView ? 1 : (window.keyboardNavActive ? 2 : 0))
                             border.color: (window.splitView && window.activePane === pane0) ? theme.primary : (window.splitView ? theme.outlineVariant : theme.primary)
@@ -1599,7 +1599,7 @@ ApplicationWindow {
                             visible: width > 2
                             opacity: Math.min(1, paneRow.split * 1.6)
                             radius: theme.radiusXl
-                            color: theme.surfaceContainerLow
+                            color: theme.backdropSurface(theme.surfaceContainerLow)
                             clip: true
                             border.width: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? 2 : 1
                             border.color: (window.splitView && pane1Loader.item && window.activePane === pane1Loader.item) ? theme.primary : theme.outlineVariant
@@ -1630,7 +1630,7 @@ ApplicationWindow {
                         id: settingsContainer
                         anchors.fill: parent
                         radius: theme.radiusXl
-                        color: theme.surfaceContainerLow
+                        color: theme.backdropSurface(theme.surfaceContainerLow)
                         clip: true
                         visible: opacity > 0.01
                         opacity: window.activeView === "settings" ? 1.0 : 0.0
@@ -1648,7 +1648,7 @@ ApplicationWindow {
                         id: pcContainer
                         anchors.fill: parent
                         radius: theme.radiusXl
-                        color: theme.surfaceContainerLow
+                        color: theme.backdropSurface(theme.surfaceContainerLow)
                         clip: true
                         visible: opacity > 0.01
                         opacity: window.activeView === "pc" ? 1.0 : 0.0
