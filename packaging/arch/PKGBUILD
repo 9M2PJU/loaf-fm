@@ -14,7 +14,7 @@ optdepends=('7zip: zip/7z/rar/iso and encrypted archives'
             'libsecret: remember encrypted drive passphrases'
             'polkit: Open as Administrator')
 makedepends=('cargo' 'rust' 'cmake' 'ninja' 'pkgconf' 'git')
-source=("$pkgname::git+https://github.com/m-uvex/loaf-fm.git#branch=dev")
+source=("$pkgname::git+https://github.com/m-uvex/loaf-fm.git#branch=main")
 sha256sums=('SKIP')
 
 build() {

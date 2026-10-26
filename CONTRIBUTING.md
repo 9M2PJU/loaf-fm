@@ -8,22 +8,21 @@ Whether you are fixing a bug, adding new features, improving packaging, or helpi
 
 ## 🧭 Branching Strategy
 
-- **`dev`** is our primary active development branch. **All pull requests must target `dev`**.
-- **`main`** is reserved strictly for stable release tags. No code should be edited here unless it's part of a release.
+- **`main`** is our primary active development and release branch. **All pull requests must target `main`**.
 
 ### Opening a Pull Request
 1. Fork the repository and clone your fork.
-2. Branch off of the latest `dev` branch:
+2. Branch off of the latest `main` branch:
    ```bash
-   git checkout dev
-   git pull origin dev
+   git checkout main
+   git pull origin main
    git checkout -b feature/my-cool-feature
    ```
 3. Keep your commits clean and descriptive (we follow [Conventional Commits](https://www.conventionalcommits.org/), e.g. `feat:`, `fix:`, `perf:`, `chore:`).
-4. If `dev` has moved forward while you were working, **rebase** your branch onto `origin/dev` before opening your PR:
+4. If `main` has moved forward while you were working, **rebase** your branch onto `origin/main` before opening your PR:
    ```bash
    git fetch origin
-   git rebase origin/dev
+   git rebase origin/main
    ```
 
 ---
