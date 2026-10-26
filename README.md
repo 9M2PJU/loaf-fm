@@ -89,9 +89,17 @@ sudo dpkg -i ./loaf_0.2.0_amd64.deb
 sudo apt-get install -f
 ```
 
-### 3. Arch and Arch-based (Manjaro, CachyOS, etc.) (`.pkg.tar.zst`)
+### 3. Arch and Arch-based (Manjaro, CachyOS, etc.)
 
-Download the `.pkg.tar.zst` package and install it using `pacman`:
+Install from the AUR (`loaf-fm`) with your AUR helper:
+
+```bash
+yay -S loaf-fm
+# or
+paru -S loaf-fm
+```
+
+Or download the `.pkg.tar.zst` package from the release page and install it using `pacman`:
 
 ```bash
 sudo pacman -U ./loaf-0.2.0-1-x86_64.pkg.tar.zst
@@ -100,6 +108,7 @@ sudo pacman -U ./loaf-0.2.0-1-x86_64.pkg.tar.zst
 Or build from the included `PKGBUILD`:
 
 ```bash
+cd packaging/arch
 makepkg -si
 ```
 
