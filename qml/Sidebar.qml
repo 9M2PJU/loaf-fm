@@ -36,7 +36,7 @@ Rectangle {
     readonly property bool showTrash: !theme.hideTrashWhenEmpty || (typeof core !== "undefined" && core && !core.trash_empty) || (typeof dragManager !== "undefined" && dragManager && dragManager.active)
 
     radius: theme.radiusXl
-    color: theme.surfaceContainer
+    color: theme.backdropSurface(theme.surfaceContainer)
     clip: true
     implicitWidth: expanded ? 200 : 68
     Behavior on implicitWidth { enabled: theme.animate; NumberAnimation { duration: 230; easing.type: Easing.OutCubic } }

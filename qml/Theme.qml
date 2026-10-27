@@ -5,6 +5,19 @@ Item {
     visible: false
 
     property string themeMode: "auto" // "auto", "light", "dark"
+    property real backgroundOpacity: 1.0
+    readonly property real effectiveBackgroundOpacity: lowPower ? 1.0
+        : (isFinite(backgroundOpacity) ? Math.max(0.5, Math.min(1.0, backgroundOpacity)) : 1.0)
+
+    // Only large background surfaces use alpha. Foregrounds and popup surfaces
+    // retain their palette colors, so text, icons and dialogs remain opaque.
+    readonly property color windowBackground: Qt.rgba(background.r, background.g, background.b, effectiveBackgroundOpacity)
+    function backdropSurface(color) {
+        // A light tint above the window preserves surface hierarchy without
+        // stacking several nearly opaque backgrounds over the desktop.
+        var alpha = effectiveBackgroundOpacity < 1.0 ? 0.16 : 1.0;
+        return Qt.rgba(color.r, color.g, color.b, alpha);
+    }
     property string accentName: "wallpaper" // "wallpaper", "lavender", "amber", "catppuccin", "nord", "tokyonight", "gruvbox", "rosepine"
     property string iconSource: "phosphor" // "phosphor", "system", "adwaita" or "custom"
     property string customIconTheme: "" // icon theme folder name used when iconSource is "custom"
@@ -2004,6 +2017,9 @@ Item {
 
         value = readSetting("themeMode");
         if (value.length > 0) themeMode = value;
+        value = readSetting("backgroundOpacity");
+        if (value.trim().length > 0 && isFinite(Number(value)))
+            backgroundOpacity = Math.max(0.5, Math.min(1.0, Number(value)));
         value = readSetting("accentName");
         if (value.length > 0) accentName = value;
         if (accentName === "wallpaper" && typeof core !== "undefined" && core)
@@ -2078,6 +2094,7 @@ Item {
     Component.onCompleted: loadSettings()
 
     onThemeModeChanged: writeSetting("themeMode", themeMode)
+    onBackgroundOpacityChanged: writeSetting("backgroundOpacity", backgroundOpacity)
     onAccentNameChanged: {
         writeSetting("accentName", accentName);
         if (accentName === "wallpaper" && typeof core !== "undefined" && core)

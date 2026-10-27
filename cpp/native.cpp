@@ -14,6 +14,7 @@
 #include <QMimeDatabase>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickWindow>
 #include <QTranslator>
 #include <QUrl>
 
@@ -265,6 +266,9 @@ rust::String mime_comment_for(rust::Str mime)
 
 void set_application_identity(rust::Str version)
 {
+    // Keep an alpha channel even when the window starts with a solid background;
+    // users can enable translucency later without recreating the window.
+    QQuickWindow::setDefaultAlphaBuffer(true);
     QCoreApplication::setApplicationVersion(toQString(version));
     QCoreApplication::setApplicationName(QStringLiteral("loaf"));
     QCoreApplication::setOrganizationName(QStringLiteral("loaf"));
