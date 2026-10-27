@@ -168,6 +168,10 @@ pub mod qobject {
         fn open_as_admin(self: Pin<&mut LoafCore>, path: &QString);
         #[qinvokable]
         fn open_new_window(self: &LoafCore, path: &QString);
+        /// Opens a non-file URI (e.g. a remote bookmark from the
+        /// shared GTK bookmarks file) with the system's default handler.
+        #[qinvokable]
+        fn open_uri(self: Pin<&mut LoafCore>, uri: &QString);
         #[qinvokable]
         fn quick_look(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
@@ -484,6 +488,23 @@ fn save_places_config(c: &PlacesConfig) {
     state::set("placesConfig", &serde_json::to_string(c).unwrap_or_default());
 }
 
+/// Sidebar entry for a non-file (network) GTK bookmark, e.g. a remote
+/// URI saved by Nemo/Nautilus. Returns `None` for `file://`
+/// bookmarks (handled separately) and for lines that are not URIs.
+fn network_place(b: &xdg::Bookmark) -> Option<serde_json::Value> {
+    if b.path().is_some() || !b.uri.contains("://") {
+        return None;
+    }
+    Some(serde_json::json!({
+        "id": format!("network:{}", b.uri),
+        "kind": "network",
+        "name": b.display_name(),
+        "path": b.uri,
+        "icon": "network",
+        "system_icon": "folder-remote-symbolic",
+    }))
+}
+
 /// Every sidebar entry, with a `hidden` flag.
 fn build_places(hostname: &str, device_type: &str) -> Vec<serde_json::Value> {
     let cfg = places_config();
@@ -518,6 +539,14 @@ fn build_places(hostname: &str, device_type: &str) -> Vec<serde_json::Value> {
             "system_icon": "folder-symbolic",
             "missing": !exists,
         }));
+    }
+    // Network bookmarks (remote URIs) from the shared GTK bookmarks
+    // file, e.g. shortcuts saved by Nemo/Nautilus. Loaf can't browse them
+    // internally, so they open with the system's default handler.
+    for b in xdg::bookmarks() {
+        if let Some(entry) = network_place(&b) {
+            items.push(entry);
+        }
     }
     for p in smb::profiles() {
         let state = smb::state_for(&p);
@@ -1444,6 +1473,22 @@ impl qobject::LoafCore {
             cmd.arg(p);
         }
         let _ = util::spawn_detached(cmd);
+    }
+    pub fn open_uri(mut self: Pin<&mut Self>, uri: &QString) {
+        let u = uri.to_string();
+        if !u.contains("://") {
+            return;
+        }
+        let launched = util::which("xdg-open")
+            .map(|b| {
+                let mut c = std::process::Command::new(b);
+                c.arg(&u);
+                util::spawn_detached(c).is_ok()
+            })
+            .unwrap_or(false);
+        if !launched {
+            self.as_mut().notify(q("error"), q(&format!("No application can open “{}”", u)));
+        }
     }
     pub fn quick_look(&self, path: &QString) -> QString {
         q(&serde_json::to_string(&info::quick_look(Path::new(&path.to_string()))).unwrap_or_else(|_| "{}".into()))
@@ -2455,6 +2500,25 @@ impl cxx_qt::Initialize for qobject::LoafCore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_bookmark_places() {
+        // Non-file bookmarks (e.g. remote URIs) become "network" entries.
+        let remote = xdg::Bookmark { uri: "sftp://user@example-nas/media".to_string(), label: "Media".to_string() };
+        let v = network_place(&remote).expect("network bookmark should produce a place");
+        assert_eq!(v["kind"], "network");
+        assert_eq!(v["id"], "network:sftp://user@example-nas/media");
+        assert_eq!(v["name"], "Media");
+        assert_eq!(v["path"], "sftp://user@example-nas/media");
+        // Without a label the URI itself is shown.
+        let bare = xdg::Bookmark { uri: "ftp://nas/share".to_string(), label: String::new() };
+        assert_eq!(network_place(&bare).unwrap()["name"], "ftp://nas/share");
+        // file:// bookmarks and non-URIs are not network entries.
+        let local = xdg::Bookmark { uri: "file:///home/x".to_string(), label: String::new() };
+        assert!(network_place(&local).is_none());
+        let junk = xdg::Bookmark { uri: "not a uri".to_string(), label: String::new() };
+        assert!(network_place(&junk).is_none());
+    }
 
     #[test]
     fn extraction_never_nests_or_overwrites() {
