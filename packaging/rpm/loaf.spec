@@ -88,7 +88,9 @@ install -Dm644 LICENSE %{buildroot}%{_datadir}/licenses/%{name}/LICENSE
 install -Dm644 THIRD-PARTY-LICENSES.md %{buildroot}%{_datadir}/licenses/%{name}/THIRD-PARTY-LICENSES.md
 
 %check
-desktop-file-validate %{buildroot}%{_datadir}/applications/loaf.desktop
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate %{buildroot}%{_datadir}/applications/loaf.desktop
+fi
 
 %files
 %license LICENSE

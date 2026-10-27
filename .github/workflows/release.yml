@@ -50,6 +50,7 @@ jobs:
             libxkbcommon-dev \
             libvulkan-dev \
             libfuse2 \
+            desktop-file-utils \
             rpm \
             dpkg-dev \
             zstd
