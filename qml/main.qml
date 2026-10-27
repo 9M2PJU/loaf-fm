@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 640
     minimumHeight: 420
     visible: true
-    title: (native.isAdmin ? qsTr("[Administrator] ") : "") + "Loaf - " + (activeView === "settings"
+    title: (nativeBridge.isAdmin ? qsTr("[Administrator] ") : "") + "Loaf - " + (activeView === "settings"
         ? qsTr("Settings")
         : activeView === "pc" ? (core.hostname || qsTr("This PC"))
         : (engine.is_searching_everywhere ? qsTr("Search") : engine.current_dir_name))
@@ -116,7 +116,7 @@ ApplicationWindow {
     }
 
     function refreshCutSet() {
-        var c = native.clipboardFiles();
+        var c = nativeBridge.clipboardFiles();
         var s = {};
         if (c.cut) {
             for (var i = 0; i < c.paths.length; ++i)
@@ -126,7 +126,7 @@ ApplicationWindow {
     }
 
     Connections {
-        target: native
+        target: nativeBridge
         function onClipboardChanged() { window.refreshCutSet(); }
         function onOpenRequested(paths, mode) { window.handleOpenRequest(paths, mode); }
     }
@@ -156,7 +156,7 @@ ApplicationWindow {
         var paths = selectedPaths();
         if (paths.length === 0 || engine.location_kind === "archive" || engine.location_kind === "trash")
             return;
-        native.setClipboardFiles(paths, cut);
+        nativeBridge.setClipboardFiles(paths, cut);
         toast("info", cut ? theme.plural(paths.length, qsTr("1 item cut"), qsTr("%1 items cut")) : theme.plural(paths.length, qsTr("1 item copied"), qsTr("%1 items copied")));
     }
 
@@ -164,19 +164,19 @@ ApplicationWindow {
         var paths = selectedPaths();
         if (paths.length === 0)
             paths = [engine.current_path];
-        native.setClipboardText(paths.join("\n"));
+        nativeBridge.setClipboardText(paths.join("\n"));
         toast("info", qsTr("Path copied"));
     }
 
     function pasteInto(dest) {
-        var c = native.clipboardFiles();
+        var c = nativeBridge.clipboardFiles();
         if (!c.paths || c.paths.length === 0 || !dest)
             return;
         transfer(c.paths, dest, c.cut ? "move" : "copy", c.cut);
     }
 
     function afterCutPaste() {
-        native.clearClipboardIfOurs();
+        nativeBridge.clearClipboardIfOurs();
     }
 
     // Starts a copy/move, asking first when names clash. `fromCut` is set
@@ -455,7 +455,7 @@ ApplicationWindow {
 
     // geometryOnly: started with explicit paths, so open just those.
     function restoreSession(geometryOnly) {
-        if (core.get_setting("restoreSession") === "false" || native.isAdmin)
+        if (core.get_setting("restoreSession") === "false" || nativeBridge.isAdmin)
             return false;
         var raw = core.get_setting("session");
         if (!raw)
@@ -534,9 +534,9 @@ ApplicationWindow {
 
     Component.onCompleted: {
         refreshCutSet();
-        var pending = native.takePendingOpen();
+        var pending = nativeBridge.takePendingOpen();
         var restored = restoreSession(pending.length > 0);
-        if (native.startupMode === "mini") {
+        if (nativeBridge.startupMode === "mini") {
             sidebar.expanded = false;
             theme.zoomIndex = 1;
         }
@@ -741,7 +741,7 @@ ApplicationWindow {
             engine.set_path(path);
         }
         onShare_link_ready: function(shareId, url) {
-            native.setClipboardText(url);
+            nativeBridge.setClipboardText(url);
             window.toast("info", qsTr("Share link copied to clipboard!"));
         }
         onShare_link_error: function(message) {
@@ -840,7 +840,7 @@ ApplicationWindow {
 
             Rectangle {
                 id: adminBadge
-                visible: native.isAdmin
+                visible: nativeBridge.isAdmin
                 Layout.preferredWidth: adminRow.implicitWidth + 24
                 Layout.preferredHeight: 42
                 radius: theme.radiusFull
@@ -2045,7 +2045,7 @@ ApplicationWindow {
 
             m.push({ text: qsTr("Cut"), icon: "scissors", shortcut: "Ctrl+X", itemKey: "cut", separatorBefore: true, action: function() { window.copySelection(true); } });
             m.push({ text: qsTr("Copy"), icon: "copy", shortcut: "Ctrl+C", itemKey: "copy", action: function() { window.copySelection(false); } });
-            if (item.is_dir && single && native.clipboardHasFiles())
+            if (item.is_dir && single && nativeBridge.clipboardHasFiles())
                 m.push({ text: qsTr("Paste Into Folder"), icon: "clipboard", itemKey: "paste", action: function() { window.pasteInto(item.path); } });
             m.push({ text: qsTr("Copy Path"), icon: "copy-simple", shortcut: "Ctrl+Shift+C", itemKey: "copy_path", action: function() { window.copyPathOfSelection(); } });
             if (single)
@@ -2091,7 +2091,7 @@ ApplicationWindow {
                 m.push({ text: qsTr("Scripts"), icon: "scroll", itemKey: "scripts", submenu: menuFromTree(scripts, function(script) {
                     core.run_script(script, kind === "dir" ? pane.engine.current_path : item.parent_path, JSON.stringify(paths));
                 }) });
-            if (!native.isAdmin && item.is_dir && single)
+            if (!nativeBridge.isAdmin && item.is_dir && single)
                 m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", itemKey: "admin", action: function() { core.open_as_admin(item.path); } });
 
             m.push({ text: qsTr("Move to Trash"), icon: "trash", shortcut: "Del", danger: true, itemKey: "delete", separatorBefore: true, action: function() { window.trashSelection(); } });
@@ -2147,7 +2147,7 @@ ApplicationWindow {
                 }) });
             }
             m.push({ text: qsTr("New…"), icon: "plus-circle", itemKey: "new", submenu: newSub });
-            if (native.clipboardHasFiles())
+            if (nativeBridge.clipboardHasFiles())
                 m.push({ text: qsTr("Paste"), icon: "clipboard", shortcut: "Ctrl+V", itemKey: "paste", separatorBefore: true, action: function() { window.pasteInto(e.current_path); } });
         }
         if (e.item_count > 0) {
@@ -2166,7 +2166,7 @@ ApplicationWindow {
             var scripts = JSON.parse(core.scripts_json() || "[]");
             if (scripts.length > 0)
                 m.push({ text: qsTr("Scripts"), icon: "scroll", itemKey: "scripts", submenu: menuFromTree(scripts, function(script) { core.run_script(script, e.current_path, "[]"); }) });
-            if (!native.isAdmin)
+            if (!nativeBridge.isAdmin)
                 m.push({ text: qsTr("Open as Administrator"), icon: "shield-check", itemKey: "admin", action: function() { core.open_as_admin(e.current_path); } });
             m.push({ text: qsTr("Properties"), icon: "info", itemKey: "properties", separatorBefore: true, action: function() { window.showProperties([e.current_path]); } });
         }
@@ -2199,8 +2199,8 @@ ApplicationWindow {
                 return;
             model = [
                 { text: qsTr("Open in New Tab"), icon: "tabs", action: function() { window.newTab(path); } },
-                { text: qsTr("Paste Into Folder"), icon: "clipboard", enabled: native.clipboardHasFiles(), action: function() { window.pasteInto(path); } },
-                { text: qsTr("Copy Path"), icon: "copy-simple", action: function() { native.setClipboardText(path); window.toast("info", qsTr("Path copied")); } },
+                { text: qsTr("Paste Into Folder"), icon: "clipboard", enabled: nativeBridge.clipboardHasFiles(), action: function() { window.pasteInto(path); } },
+                { text: qsTr("Copy Path"), icon: "copy-simple", action: function() { nativeBridge.setClipboardText(path); window.toast("info", qsTr("Path copied")); } },
                 { text: qsTr("Add to Sidebar"), icon: "push-pin", action: function() { core.add_bookmark(path); } },
                 { text: qsTr("Properties"), icon: "info", separatorBefore: true, action: function() { window.showProperties([path]); } }
             ];
