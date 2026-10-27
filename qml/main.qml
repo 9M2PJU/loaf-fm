@@ -51,6 +51,7 @@ ApplicationWindow {
         || smbDialog.visible
         || window.isEditingPath
     readonly property bool gridKeyboardReady: activeView === "files" && !searchInput.activeFocus
+        && !newTabToolbarButton.activeFocus && !newWindowToolbarButton.activeFocus
         && !pathInput.activeFocus && !anyModalOpen && !!activePane && activePane.renamingPath === ""
     // helpers used by the panes and dialogs
 
@@ -833,10 +834,11 @@ ApplicationWindow {
         z: 1
         RowLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             Layout.topMargin: 14
             Layout.leftMargin: 20
             Layout.rightMargin: 20
-            spacing: 10
+            spacing: window.width < 760 ? 8 : 10
 
             Rectangle {
                 id: adminBadge
@@ -861,6 +863,7 @@ ApplicationWindow {
                 readonly property bool canBack: engine.can_go_back || window.isAuxView || engine.is_searching_everywhere
                 readonly property bool canForward: engine.can_go_forward && !window.isAuxView && !engine.is_searching_everywhere
                 Layout.preferredWidth: canForward ? 82 : 44
+                Layout.minimumWidth: canForward ? 82 : 44
                 opacity: (canBack || canForward) ? 1.0 : 0.45
 
                 RowLayout {
@@ -888,6 +891,42 @@ ApplicationWindow {
                         systemIcon: "go-next-symbolic"
                         accessibleName: qsTr("Forward")
                         onClicked: engine.go_forward()
+                    }
+                }
+            }
+
+            Rectangle {
+                id: windowTabsChip
+                Layout.preferredHeight: 42
+                Layout.preferredWidth: 82
+                Layout.minimumWidth: 82
+                radius: theme.radiusFull
+                color: theme.surfaceContainer
+
+                RowLayout {
+                    anchors.centerIn: parent
+                    spacing: 2
+                    TopIconButton {
+                        id: newTabToolbarButton
+                        iconName: "tabs"
+                        systemIcon: "tab-new-symbolic"
+                        accessibleName: qsTr("New tab (Ctrl+T)")
+                        activeFocusOnTab: true
+                        Keys.onSpacePressed: clicked()
+                        Keys.onReturnPressed: clicked()
+                        Keys.onEnterPressed: clicked()
+                        onClicked: window.newTab(engine.location_kind === "dir" ? engine.current_path : "")
+                    }
+                    TopIconButton {
+                        id: newWindowToolbarButton
+                        iconName: "app-window"
+                        systemIcon: "window-new-symbolic"
+                        accessibleName: qsTr("New window (Ctrl+N)")
+                        activeFocusOnTab: true
+                        Keys.onSpacePressed: clicked()
+                        Keys.onReturnPressed: clicked()
+                        Keys.onEnterPressed: clicked()
+                        onClicked: core.open_new_window(engine.location_kind === "dir" ? engine.current_path : "")
                     }
                 }
             }
@@ -1127,10 +1166,12 @@ ApplicationWindow {
             // this folder or the whole home folder in the background.
             Rectangle {
                 id: searchBar
+                Layout.fillWidth: true
                 Layout.preferredHeight: 42
                 Layout.preferredWidth: (searchInput.activeFocus || engine.is_searching_everywhere)
                     ? (window.width < 900 ? 280 : 380) : (window.width < 900 ? 180 : 220)
-                Layout.minimumWidth: 120
+                Layout.minimumWidth: window.width < 760 ? 80 : 120
+                Layout.maximumWidth: searchBar.Layout.preferredWidth
                 radius: theme.radiusFull
                 color: searchInput.activeFocus ? theme.surfaceContainerHighest : theme.surfaceContainer
                 border.width: searchInput.activeFocus ? 1.5 : 0
@@ -1264,6 +1305,7 @@ ApplicationWindow {
                 visible: window.activeView === "files"
                 Layout.preferredHeight: 42
                 Layout.preferredWidth: viewRow.implicitWidth + 20
+                Layout.minimumWidth: viewRow.implicitWidth + 20
                 radius: theme.radiusFull
                 color: theme.surfaceContainer
                 clip: true
@@ -1708,6 +1750,8 @@ ApplicationWindow {
             anchors.fill: parent
             radius: width / 2
             color: tibMouse.containsMouse ? theme.hoverOverlay : "transparent"
+            border.width: tib.activeFocus ? 2 : 0
+            border.color: theme.primary
         }
         LoafIcon {
             visible: theme.iconSource === "phosphor" || tib.systemIcon.length === 0
