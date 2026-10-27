@@ -1,0 +1,94 @@
+name: "Release Packages"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (e.g. v0.2.0)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Build Linux Release Packages
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Qt6 and packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            libqt6quick6 \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-layouts \
+            qml6-module-qtquick-templates2 \
+            qml6-module-qtquick-effects \
+            qml6-module-qtquick-shapes \
+            libgl1-mesa-dev \
+            libxkbcommon-dev \
+            libvulkan-dev \
+            libfuse2 \
+            rpm \
+            dpkg-dev \
+            zstd
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Build distribution packages
+        run: bash packaging/build-packages.sh
+
+      - name: Build standalone AppImage
+        run: bash packaging/build-appimage.sh
+
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+            echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Loaf ${{ steps.tag.outputs.tag }}"
+          draft: false
+          prerelease: false
+          files: |
+            packaging/dist/loaf-*.deb
+            packaging/dist/loaf-*.rpm
+            packaging/dist/loaf-*.pkg.tar.zst
+            packaging/dist/loaf-*.tar.gz
+            packaging/dist/loaf-v*-linux-x86_64
+            packaging/dist/Loaf-*.AppImage
+            packaging/dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
