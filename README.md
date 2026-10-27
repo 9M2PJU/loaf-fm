@@ -308,4 +308,4 @@ Btw the claude contributor is because of a PR, I don't even use claude.....
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for the full license text and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for third-party notices and LGPL compliance details.

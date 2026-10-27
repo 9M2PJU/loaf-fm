@@ -25,6 +25,14 @@ fi
 
 cp -r "$DIR/share/icons/hicolor/"* "$PREFIX/share/icons/hicolor/"
 
+if [ -f "$DIR/LICENSE" ] || [ -f "$DIR/share/licenses/loaf/LICENSE" ]; then
+    mkdir -p "$PREFIX/share/licenses/loaf"
+    [ -f "$DIR/LICENSE" ] && install -m 644 "$DIR/LICENSE" "$PREFIX/share/licenses/loaf/LICENSE"
+    [ -f "$DIR/THIRD-PARTY-LICENSES.md" ] && install -m 644 "$DIR/THIRD-PARTY-LICENSES.md" "$PREFIX/share/licenses/loaf/THIRD-PARTY-LICENSES.md"
+    [ -f "$DIR/share/licenses/loaf/LICENSE" ] && install -m 644 "$DIR/share/licenses/loaf/LICENSE" "$PREFIX/share/licenses/loaf/LICENSE"
+    [ -f "$DIR/share/licenses/loaf/THIRD-PARTY-LICENSES.md" ] && install -m 644 "$DIR/share/licenses/loaf/THIRD-PARTY-LICENSES.md" "$PREFIX/share/licenses/loaf/THIRD-PARTY-LICENSES.md"
+fi
+
 # Update desktop and icon databases if available
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true

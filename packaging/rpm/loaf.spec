@@ -10,6 +10,7 @@
 #   rpmbuild -bb --define "_prebuilt 1" --define "_sourcedir $PWD" packaging/rpm/loaf.spec
 
 %global debug_package %{nil}
+%define _prefix /usr
 
 Name:           loaf
 Version:        0.2.0
@@ -62,7 +63,7 @@ computers.
 %if 0%{?_prebuilt:1}
 # Prebuilt: take the binary and assets straight from the checkout.
 %setup -q -c -T -n %{name}-%{version}
-cp -a "%{_sourcedir}/packaging" "%{_sourcedir}/README.md" .
+cp -a "%{_sourcedir}/packaging" "%{_sourcedir}/README.md" "%{_sourcedir}/LICENSE" "%{_sourcedir}/THIRD-PARTY-LICENSES.md" .
 install -Dm755 "%{_sourcedir}/target/release/loaf" target/release/loaf
 %else
 %autosetup -n %{name}-%{version}
@@ -83,15 +84,19 @@ for sz in 16 32 48 64 128 256 512; do
 done
 install -Dm644 packaging/assets/icons/hicolor/scalable/apps/loaf.svg \
     %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/loaf.svg
+install -Dm644 LICENSE %{buildroot}%{_datadir}/licenses/%{name}/LICENSE
+install -Dm644 THIRD-PARTY-LICENSES.md %{buildroot}%{_datadir}/licenses/%{name}/THIRD-PARTY-LICENSES.md
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/loaf.desktop
 
 %files
-%doc README.md
+%license LICENSE
+%doc README.md THIRD-PARTY-LICENSES.md
 %{_bindir}/loaf
 %{_datadir}/applications/loaf.desktop
 %{_datadir}/icons/hicolor/*/apps/loaf.*
+%{_datadir}/licenses/%{name}/
 
 %changelog
 * Mon Oct 26 2026 Loaf contributors - 0.2.0-1
