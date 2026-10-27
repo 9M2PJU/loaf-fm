@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.m_uvex.loaf</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Loaf</name>
+  <summary>Material 3 Expressive File Manager</summary>
+  <description>
+    <p>
+      Loaf is a fast, expressive file manager for Linux built with Qt6 Quick and Rust.
+      It features Material 3 Expressive design, tabs and split-pane view, background file operations
+      with progress and undo, freedesktop trash integration, archive browsing and extraction,
+      system drive management, and customizable theme palettes.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.m_uvex.loaf.desktop</launchable>
+  <developer id="io.github.m_uvex">
+    <name>Musa Murad</name>
+  </developer>
+  <url type="homepage">https://github.com/m-uvex/loaf-fm</url>
+  <url type="bugtracker">https://github.com/m-uvex/loaf-fm/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.2.0" date="2026-10-26">
+      <description>
+        <p>Loaf 0.2.0 release: settings modular overhaul, enhanced theme palette support, and stability improvements.</p>
+      </description>
+    </release>
+  </releases>
+</component>
