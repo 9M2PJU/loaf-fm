@@ -73,6 +73,8 @@ pub mod qobject {
         #[qinvokable]
         fn resolve_icon(self: &LoafCore, theme: &QString, name: &QString) -> QString;
         #[qinvokable]
+        fn icon_themes_json(self: &LoafCore) -> QString;
+        #[qinvokable]
         fn load_places(self: Pin<&mut LoafCore>);
         #[qinvokable]
         fn all_places_json(self: &LoafCore) -> QString;
@@ -772,6 +774,12 @@ impl qobject::LoafCore {
             other => other.to_string(),
         };
         q(&icons::resolve(&t, &name.to_string(), 48))
+    }
+
+    pub fn icon_themes_json(&self) -> QString {
+        let themes: Vec<serde_json::Value> =
+            icons::installed_themes().into_iter().map(|(id, name)| serde_json::json!({"id": id, "name": name})).collect();
+        q(&serde_json::to_string(&themes).unwrap_or_default())
     }
     pub fn load_places(mut self: Pin<&mut Self>) {
         let places: Vec<serde_json::Value> = build_places(&self.hostname().to_string(), &self.device_type().to_string())

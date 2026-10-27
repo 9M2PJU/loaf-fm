@@ -274,6 +274,32 @@ fn ini_value(path: &Path, group: &str, key: &str) -> Option<String> {
     None
 }
 
+/// Installed icon themes as (folder name, display name), sorted by display
+/// name. Cursor-only themes (no `Directories`) and `Hidden` ones are skipped.
+pub fn installed_themes() -> Vec<(String, String)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for base in base_dirs() {
+        let Ok(entries) = fs::read_dir(&base) else { continue };
+        for entry in entries.flatten() {
+            let id = entry.file_name().to_string_lossy().to_string();
+            let index = entry.path().join("index.theme");
+            if seen.contains(&id) || !index.is_file() {
+                continue;
+            }
+            seen.insert(id.clone());
+            let get = |key: &str| ini_value(&index, "[Icon Theme]", key);
+            if get("Directories").is_none() || get("Hidden").is_some_and(|h| h == "true") {
+                continue;
+            }
+            let name = get("Name").unwrap_or_else(|| id.clone());
+            out.push((id, name));
+        }
+    }
+    out.sort_by_key(|(_, name)| name.to_lowercase());
+    out
+}
+
 /// The desktop's icon theme name.
 pub fn system_theme() -> String {
     if let Ok(t) = std::env::var("LOAF_ICON_THEME") {
@@ -320,6 +346,13 @@ mod tests {
         assert_eq!(dirs.len(), 2);
         assert!(matches_size(&dirs[0], 48) && !matches_size(&dirs[0], 32));
         assert!(matches_size(&dirs[1], 100));
+    }
+
+    #[test]
+    fn installed_themes_are_loadable() {
+        for (id, _) in installed_themes() {
+            assert!(load_theme(&id).is_some(), "{}", id);
+        }
     }
 
     #[test]

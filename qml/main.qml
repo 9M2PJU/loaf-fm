@@ -76,7 +76,10 @@ ApplicationWindow {
     }
 
     function systemIcon(name) {
-        return core.resolve_icon(theme.iconSource === "adwaita" ? "adwaita" : "system", name);
+        var source = theme.iconSource === "adwaita" ? "adwaita"
+                   : theme.iconSource === "custom" ? theme.customIconTheme
+                   : "system";
+        return core.resolve_icon(source, name);
     }
 
     function urlsToPaths(urls) {

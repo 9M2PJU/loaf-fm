@@ -6,7 +6,8 @@ Item {
 
     property string themeMode: "auto" // "auto", "light", "dark"
     property string accentName: "wallpaper" // "wallpaper", "lavender", "amber", "catppuccin", "nord", "tokyonight", "gruvbox", "rosepine"
-    property string iconSource: "phosphor" // "phosphor" or "system"
+    property string iconSource: "phosphor" // "phosphor", "system", "adwaita" or "custom"
+    property string customIconTheme: "" // icon theme folder name used when iconSource is "custom"
     property string phosphorWeight: "regular" // "regular", "bold", "fill", "duotone", "light", "thin"
     property string dragAction: "select" // "select" (selection box) or "scroll" (pan view)
     property bool showThumbnails: true
@@ -2009,6 +2010,8 @@ Item {
             core.reload_wallpaper_colors();
         value = readSetting("iconSource");
         if (value.length > 0) iconSource = value;
+        value = readSetting("customIconTheme");
+        if (value.length > 0) customIconTheme = value;
         value = readSetting("phosphorWeight");
         if (value.length > 0) phosphorWeight = value;
         value = readSetting("dragAction");
@@ -2081,6 +2084,7 @@ Item {
             core.reload_wallpaper_colors();
     }
     onIconSourceChanged: writeSetting("iconSource", iconSource)
+    onCustomIconThemeChanged: writeSetting("customIconTheme", customIconTheme)
     onPhosphorWeightChanged: writeSetting("phosphorWeight", phosphorWeight)
     onDragActionChanged: writeSetting("dragAction", dragAction)
     onShowThumbnailsChanged: writeSetting("showThumbnails", showThumbnails)

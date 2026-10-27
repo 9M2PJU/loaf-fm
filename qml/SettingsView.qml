@@ -24,7 +24,7 @@ Item {
 
     readonly property bool card1Match: matchesQuery("theme appearance light dark auto mode color scheme")
     readonly property bool card2Match: matchesQuery("theme palette accent colors wallpaper catppuccin nord tokyonight gruvbox rosepine amber lavender violet ricing")
-    readonly property bool card4Match: matchesQuery("icon style vector phosphor system adwaita desktop theme")
+    readonly property bool card4Match: matchesQuery("icon style vector phosphor system adwaita desktop theme custom installed papirus breeze")
     readonly property bool card5Match: matchesQuery("phosphor weight variant thin light regular bold fill duotone stroke thickness")
 
     readonly property bool card6Match: matchesQuery("left click drag action selection box pan scroll view rubberband marquee mouse")
@@ -557,7 +557,7 @@ Item {
                                     spacing: 3
                                     Layout.fillWidth: true
                                     Text { text: qsTr("Icon style"); color: theme.textMain; font.pixelSize: theme.fs(14); font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
-                                    Text { text: qsTr("Phosphor, system theme, or GNOME Adwaita"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                                    Text { text: qsTr("Phosphor, system theme, GNOME Adwaita, or any installed icon theme"); color: theme.textMuted; font.pixelSize: theme.fs(11); wrapMode: Text.Wrap; Layout.fillWidth: true; Layout.minimumWidth: 0 }
                                 }
 
 
@@ -609,6 +609,69 @@ Item {
                                             Text { anchors.centerIn: parent; text: qsTr("Adwaita"); color: theme.iconSource === "adwaita" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true; Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } } }
                                         }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: theme.iconSource = "adwaita" }
+                                    }
+
+                                    Item {
+                                        width: 90; height: 38
+                                        Rectangle {
+                                            anchors.fill: parent; radius: theme.radiusFull
+                                            color: theme.iconSource === "custom" ? theme.primaryContainer : theme.surfaceContainerHigh
+                                            border.width: theme.iconSource === "custom" ? 2 : 1
+                                            border.color: theme.iconSource === "custom" ? theme.primary : theme.outlineVariant
+                                            Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } }
+                                            Behavior on border.width { enabled: theme.animate; NumberAnimation { duration: theme.durationFast } }
+                                            Text { anchors.centerIn: parent; text: qsTr("Custom"); color: theme.iconSource === "custom" ? theme.primaryContainerFg : theme.textMain; font.pixelSize: theme.fs(11); font.bold: true; Behavior on color { enabled: theme.animate; ColorAnimation { duration: theme.durationFast } } }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (theme.customIconTheme.length === 0)
+                                                    theme.customIconTheme = core.icon_theme;
+                                                theme.iconSource = "custom";
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Installed icon themes, listed only while "Custom" is picked.
+                                Flow {
+                                    visible: theme.iconSource === "custom"
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Repeater {
+                                        model: theme.iconSource === "custom" ? JSON.parse(core.icon_themes_json() || "[]") : []
+
+                                        delegate: Item {
+                                            width: themeLabel.implicitWidth + 28; height: 36
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: theme.radiusFull
+                                                color: theme.customIconTheme === modelData.id ? theme.primaryContainer : theme.surfaceContainerHigh
+                                                border.color: theme.primary
+                                                border.width: theme.customIconTheme === modelData.id ? 2 : 0
+
+                                                scale: tMouse.pressed ? 0.94 : (tMouse.containsMouse ? 1.04 : 1.0)
+                                                Behavior on scale { enabled: theme.animate; SpringAnimation { spring: 3.5; damping: 0.3 } }
+
+                                                Text {
+                                                    id: themeLabel
+                                                    anchors.centerIn: parent
+                                                    text: modelData.name
+                                                    color: theme.customIconTheme === modelData.id ? theme.primaryContainerFg : theme.textMain
+                                                    font.pixelSize: theme.fs(11)
+                                                    font.bold: theme.customIconTheme === modelData.id
+                                                }
+                                            }
+                                            MouseArea {
+                                                id: tMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: theme.customIconTheme = modelData.id
+                                            }
+                                        }
                                     }
                                 }
                             }
