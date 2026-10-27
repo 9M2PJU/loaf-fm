@@ -88,8 +88,8 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let mut app = QGuiApplication::new();
     native::ffi::set_application_identity(env!("CARGO_PKG_VERSION"));
+    let mut app = QGuiApplication::new();
     let admin = std::env::var("LOAF_ADMIN").is_ok();
     if !args.new_window && !admin {
         let mode = if args.paths.is_empty() { "window" } else { "tab" };
