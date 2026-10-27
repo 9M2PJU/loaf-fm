@@ -3,8 +3,8 @@ Version: 0.2.0
 Section: utils
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= 2.31), libgl1, libglvnd0, libqt6core6, libqt6gui6, libqt6qml6, libqt6quick6, libqt6dbus6, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates2, qml6-module-qtquick-shapes
-Recommends: qml6-module-qtquick-effects, qt6-wayland, 7zip | p7zip-full, udisks2, ffmpegthumbnailer, xdg-utils, libsecret-tools
+Depends: libc6 (>= 2.31), libgl1, libglvnd0, libqt6core6, libqt6gui6, libqt6qml6, libqt6quick6, libqt6dbus6, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-shapes
+Recommends: qt6-wayland, 7zip | p7zip-full, udisks2, ffmpegthumbnailer, xdg-utils, libsecret-tools
 Maintainer: Musa Murad <musamurad@proton.me>
 Homepage: https://github.com/m-uvex/loaf-fm
 Description: Material 3 Expressive File Manager
