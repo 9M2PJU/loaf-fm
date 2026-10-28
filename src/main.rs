@@ -1,6 +1,7 @@
 pub mod apps;
 pub mod archive;
 pub mod core;
+pub mod dlna;
 pub mod drives;
 pub mod fsops;
 pub mod icons;
@@ -8,6 +9,7 @@ pub mod info;
 pub mod listing;
 pub mod native;
 pub mod pane;
+pub mod rclone;
 pub mod search;
 pub mod share;
 pub mod smb;

@@ -207,6 +207,7 @@ pub struct CreateShareParams {
     pub password: String,
     pub expiration_hours: u32, // 0 for none
     pub throttle_kbps: u32,    // 0 for unlimited
+    pub lan_only: bool,         // serve on the local network, no Cloudflare Tunnel
 }
 
 /// Spawns the sharing pipeline in background thread.
@@ -229,7 +230,12 @@ fn run_share_pipeline(params: CreateShareParams) -> Result<(String, String), Str
         return Err("No files selected".into());
     }
 
-    let cloudflared_bin = find_cloudflared().ok_or("cloudflared is not installed".to_string())?;
+    // Internet shares need the tunnel daemon; LAN shares serve directly.
+    let cloudflared_bin = if params.lan_only {
+        None
+    } else {
+        Some(find_cloudflared().ok_or("cloudflared is not installed".to_string())?)
+    };
 
     // Determine target file to serve
     let single = params.paths.len() == 1;
@@ -297,8 +303,11 @@ fn run_share_pipeline(params: CreateShareParams) -> Result<(String, String), Str
     let file_meta = std::fs::metadata(&file_to_serve).map_err(|e| e.to_string())?;
     let file_size = file_meta.len();
 
-    // Start local TCP listener on random port (127.0.0.1:0)
-    let listener = TcpListener::bind("127.0.0.1:0")
+    // Start local TCP listener on a random port. LAN shares bind to all
+    // interfaces so phones/TVs on the same Wi-Fi can reach them; internet
+    // shares stay on loopback behind the Cloudflare Tunnel.
+    let bind_addr = if params.lan_only { "0.0.0.0:0" } else { "127.0.0.1:0" };
+    let listener = TcpListener::bind(bind_addr)
         .map_err(|e| format!("Failed to bind local port: {}", e))?;
     let local_port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
@@ -370,74 +379,86 @@ fn run_share_pipeline(params: CreateShareParams) -> Result<(String, String), Str
         );
     });
 
-    // Spawn cloudflared tunnel
-    let mut cloudflared_cmd = Command::new(cloudflared_bin);
-    cloudflared_cmd
-        .args([
-            "tunnel",
-            "--url",
-            &format!("http://127.0.0.1:{}", local_port),
-            "--no-autoupdate",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    // Spawn cloudflared tunnel (internet shares only). LAN shares are
+    // already reachable at http://<lan-ip>:<port>, so they skip the tunnel
+    // entirely and get a direct URL.
+    let (direct_url, tunnel_child) = if let Some(cloudflared_bin) = cloudflared_bin {
+        let mut cloudflared_cmd = Command::new(cloudflared_bin);
+        cloudflared_cmd
+            .args([
+                "tunnel",
+                "--url",
+                &format!("http://127.0.0.1:{}", local_port),
+                "--no-autoupdate",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-    let mut child = cloudflared_cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
+        let mut child = cloudflared_cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
 
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or("Failed to capture cloudflared stderr")?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or("Failed to capture cloudflared stderr")?;
 
-    // Read stderr until we find https://*.trycloudflare.com
-    let (url_tx, url_rx) = std::sync::mpsc::channel();
-    let stop_for_reader = stop_flag.clone();
+        // Read stderr until we find https://*.trycloudflare.com
+        let (url_tx, url_rx) = std::sync::mpsc::channel();
+        let stop_for_reader = stop_flag.clone();
 
-    thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        let mut found = false;
-        for line in reader.lines().flatten() {
-            if !found {
-                for word in line.split_whitespace() {
-                    if (word.starts_with("https://") && word.contains(".trycloudflare.com"))
-                        || (word.starts_with("http://") && word.contains(".trycloudflare.com"))
-                    {
-                        let mut clean_url = word.trim().to_string();
-                        if clean_url.ends_with('|') || clean_url.ends_with(']') {
-                            clean_url.pop();
+        thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            let mut found = false;
+            for line in reader.lines().flatten() {
+                if !found {
+                    for word in line.split_whitespace() {
+                        if (word.starts_with("https://") && word.contains(".trycloudflare.com"))
+                            || (word.starts_with("http://") && word.contains(".trycloudflare.com"))
+                        {
+                            let mut clean_url = word.trim().to_string();
+                            if clean_url.ends_with('|') || clean_url.ends_with(']') {
+                                clean_url.pop();
+                            }
+                            let _ = url_tx.send(Ok(clean_url));
+                            found = true;
+                            break;
                         }
-                        let _ = url_tx.send(Ok(clean_url));
-                        found = true;
-                        break;
                     }
                 }
+                if stop_for_reader.load(Ordering::Relaxed) {
+                    break;
+                }
             }
-            if stop_for_reader.load(Ordering::Relaxed) {
-                break;
+            if !found {
+                let _ = url_tx.send(Err("Tunnel did not produce a public URL".into()));
             }
-        }
-        if !found {
-            let _ = url_tx.send(Err("Tunnel did not produce a public URL".into()));
-        }
-    });
+        });
 
-    let tunnel_base_url = match url_rx.recv_timeout(Duration::from_secs(30)) {
-        Ok(Ok(u)) => u,
-        Ok(Err(e)) => {
-            let _ = child.kill();
-            get_manager().stop_share(&share_id);
-            return Err(e);
-        }
-        Err(_) => {
-            let _ = child.kill();
-            get_manager().stop_share(&share_id);
-            return Err("Timed out waiting for Cloudflare Tunnel to connect".into());
-        }
+        let tunnel_base_url = match url_rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(Ok(u)) => u,
+            Ok(Err(e)) => {
+                let _ = child.kill();
+                get_manager().stop_share(&share_id);
+                return Err(e);
+            }
+            Err(_) => {
+                let _ = child.kill();
+                get_manager().stop_share(&share_id);
+                return Err("Timed out waiting for Cloudflare Tunnel to connect".into());
+            }
+        };
+
+        (format!("{}/download/{}", tunnel_base_url, token), Some(child))
+    } else {
+        let url = format!(
+            "http://{}:{}/download/{}",
+            crate::dlna::lan_ip(),
+            local_port,
+            token
+        );
+        (url, None)
     };
-
-    let direct_url = format!("{}/download/{}", tunnel_base_url, token);
 
     // Save active handle
     {
@@ -447,7 +468,7 @@ fn run_share_pipeline(params: CreateShareParams) -> Result<(String, String), Str
             ActiveShareHandle {
                 stop_flag: stop_flag.clone(),
                 bytes_sent: bytes_sent.clone(),
-                child_process: Some(child),
+                child_process: tunnel_child,
                 temp_file,
             },
         );

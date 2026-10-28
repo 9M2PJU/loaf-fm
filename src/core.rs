@@ -25,6 +25,8 @@ pub mod qobject {
         #[qproperty(QString, frequent_dirs_json)]
         #[qproperty(QString, places_json)]
         #[qproperty(QString, smb_profiles_json)]
+        #[qproperty(QString, rclone_remotes_json)]
+        #[qproperty(QString, dlna_status_json)]
         #[qproperty(QString, operations_json)]
         #[qproperty(bool, busy)]
         #[qproperty(bool, can_undo)]
@@ -132,6 +134,7 @@ pub mod qobject {
         fn save_smb_profile(
             self: Pin<&mut LoafCore>,
             id: &QString,
+            protocol: &QString,
             name: &QString,
             server: &QString,
             share: &QString,
@@ -144,6 +147,14 @@ pub mod qobject {
         fn connect_smb(self: Pin<&mut LoafCore>, id: &QString, password: &QString, remember: bool);
         #[qinvokable]
         fn disconnect_smb(self: Pin<&mut LoafCore>, id: &QString);
+        #[qinvokable]
+        fn refresh_rclone(self: Pin<&mut LoafCore>);
+        #[qinvokable]
+        fn rclone_mount(self: Pin<&mut LoafCore>, remote: &QString);
+        #[qinvokable]
+        fn rclone_unmount(self: Pin<&mut LoafCore>, remote: &QString);
+        #[qinvokable]
+        fn rclone_available(self: &LoafCore) -> bool;
         #[qinvokable]
         fn open_item(self: Pin<&mut LoafCore>, path: &QString);
         #[qinvokable]
@@ -230,6 +241,16 @@ pub mod qobject {
         #[qinvokable]
         fn start_share(self: Pin<&mut LoafCore>, paths_json: &QString);
         #[qinvokable]
+        fn start_lan_share(self: Pin<&mut LoafCore>, paths_json: &QString);
+        #[qinvokable]
+        fn dlna_available(self: &LoafCore) -> bool;
+        #[qinvokable]
+        fn dlna_start(self: Pin<&mut LoafCore>, path: &QString);
+        #[qinvokable]
+        fn dlna_stop(self: Pin<&mut LoafCore>);
+        #[qinvokable]
+        fn refresh_dlna(self: Pin<&mut LoafCore>);
+        #[qinvokable]
         fn list_shares_json(self: &LoafCore) -> QString;
         #[qinvokable]
         fn stop_share(self: Pin<&mut LoafCore>, share_id: &QString) -> bool;
@@ -244,7 +265,7 @@ pub mod qobject {
 use crate::archive::{self, ArchiveError};
 use crate::fsops::{self, Monitor};
 use crate::share;
-use crate::{apps, drives, icons, info, native, smb, state, theme, trash, util, watcher, xdg};
+use crate::{apps, dlna, drives, icons, info, native, rclone, smb, state, theme, trash, util, watcher, xdg};
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, CxxQtType, Threading};
 use cxx_qt_lib::QString;
@@ -342,6 +363,8 @@ pub struct CoreRust {
     frequent_dirs_json: QString,
     places_json: QString,
     smb_profiles_json: QString,
+    rclone_remotes_json: QString,
+    dlna_status_json: QString,
     operations_json: QString,
     busy: bool,
     can_undo: bool,
@@ -376,6 +399,8 @@ impl Default for CoreRust {
             frequent_dirs_json: QString::from("[]"),
             places_json: QString::from("[]"),
             smb_profiles_json: QString::from("[]"),
+            rclone_remotes_json: QString::from("[]"),
+            dlna_status_json: QString::from("{\"running\":false}"),
             operations_json: QString::from("[]"),
             busy: false,
             can_undo: false,
@@ -560,12 +585,35 @@ fn build_places(hostname: &str, device_type: &str) -> Vec<serde_json::Value> {
             "icon": "network",
             "system_icon": "folder-remote-symbolic",
             "profile_id": p.id,
+            "protocol": state.protocol,
             "server": p.server,
             "share": p.share,
             "username": p.username,
             "domain": p.domain,
             "connected": state.connected,
         }));
+    }
+    {
+        // All configured rclone remotes (mounted or not): click an
+        // unmounted one to mount it, click a mounted one to open it.
+        let mounted = rclone::mounted_map();
+        for name in rclone::list_remotes() {
+            let path = mounted
+                .get(&name)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let connected = !path.is_empty();
+            items.push(serde_json::json!({
+                "id": format!("rclone:{}", name),
+                "kind": "rclone",
+                "name": name,
+                "path": path,
+                "icon": "cloud",
+                "system_icon": "folder-remote-symbolic",
+                "remote": name,
+                "connected": connected,
+            }));
+        }
     }
     items.push(serde_json::json!({"id": "trash", "kind": "trash", "name": "Trash", "path": "trash:///", "icon": "trash", "system_icon": "user-trash-symbolic"}));
 
@@ -1057,6 +1105,7 @@ impl qobject::LoafCore {
     pub fn save_smb_profile(
         mut self: Pin<&mut Self>,
         id: &QString,
+        protocol: &QString,
         name: &QString,
         server: &QString,
         share: &QString,
@@ -1065,10 +1114,22 @@ impl qobject::LoafCore {
     ) -> QString {
         let server = server.to_string();
         let server = server.trim();
+        let proto = match protocol.to_string().trim().to_lowercase().as_str() {
+            "sftp" | "ssh" => "sftp",
+            "ftp" | "ftps" => "ftp",
+            _ => "smb",
+        }
+        .to_string();
+        // SMB needs a share name (first segment only); SFTP/FTP take a full
+        // remote path (or empty for the account root).
         let share_text = share.to_string();
         let share_text = share_text.trim().trim_matches('/');
-        let share_text = share_text.split('/').next().unwrap_or("").trim();
-        if server.is_empty() || share_text.is_empty() {
+        let share_text = if proto == "smb" {
+            share_text.split('/').next().unwrap_or("").trim().to_string()
+        } else {
+            share_text.to_string()
+        };
+        if server.is_empty() || (proto == "smb" && share_text.is_empty()) {
             return QString::default();
         }
         let current = id.to_string();
@@ -1080,6 +1141,7 @@ impl qobject::LoafCore {
         let previous = list.iter().find(|p| p.id == profile_id).cloned();
         let mut profile = smb::Profile {
             id: profile_id.clone(),
+            protocol: proto.clone(),
             name: name.trim().to_string(),
             server: server.to_string(),
             share: share_text.to_string(),
@@ -1088,7 +1150,8 @@ impl qobject::LoafCore {
             remember: previous.as_ref().map(|p| p.remember).unwrap_or(false),
         };
         let identity_changed = previous.as_ref().map(|old| {
-            old.server != profile.server
+            old.protocol != profile.protocol
+                || old.server != profile.server
                 || old.username != profile.username
                 || old.domain != profile.domain
         }).unwrap_or(false);
@@ -1159,7 +1222,7 @@ impl qobject::LoafCore {
     pub fn connect_smb(mut self: Pin<&mut Self>, id: &QString, password: &QString, remember: bool) {
         let profile_id = id.to_string();
         let Some(profile) = smb::profiles().into_iter().find(|p| p.id == profile_id) else {
-            self.as_mut().notify(q("error"), q("That SMB share no longer exists"));
+            self.as_mut().notify(q("error"), q("That network share no longer exists"));
             return;
         };
         let typed = password.to_string();
@@ -1234,6 +1297,50 @@ impl qobject::LoafCore {
             match smb::unmount(&profile) {
                 Ok(()) => {
                     let _ = thread.queue(|mut core| core.as_mut().refresh_smb());
+                    Outcome::ok(String::new())
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn refresh_rclone(mut self: Pin<&mut Self>) {
+        let json = rclone::status_json();
+        if self.rclone_remotes_json().to_string() != json {
+            self.as_mut().set_rclone_remotes_json(q(&json));
+        }
+        self.as_mut().load_places();
+    }
+
+    pub fn rclone_available(&self) -> bool {
+        rclone::is_available()
+    }
+
+    pub fn rclone_mount(self: Pin<&mut Self>, remote: &QString) {
+        if !rclone::is_available() {
+            self.notify(q("error"), q("rclone is not installed"));
+            return;
+        }
+        let name = remote.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("rclone", format!("Mounting {}", name), move |_op| {
+            match rclone::mount(&name) {
+                Ok(path) => {
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_rclone());
+                    Outcome::ok(format!("{} is available at {}", name, path))
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn rclone_unmount(self: Pin<&mut Self>, remote: &QString) {
+        let name = remote.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("rclone", format!("Unmounting {}", name), move |_op| {
+            match rclone::unmount(&name) {
+                Ok(()) => {
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_rclone());
                     Outcome::ok(String::new())
                 }
                 Err(e) => Outcome::err(e),
@@ -2040,6 +2147,58 @@ impl qobject::LoafCore {
             password,
             expiration_hours,
             throttle_kbps,
+            lan_only: false,
+        };
+
+        let thread = self.qt_thread();
+        share::start_share_pipeline(params, move |result| {
+            let _ = thread.queue(move |mut core| {
+                match result {
+                    Ok((id, url)) => {
+                        core.as_mut().share_link_ready(q(&id), q(&url));
+                    }
+                    Err(e) => {
+                        core.as_mut().share_link_error(q(&e));
+                    }
+                }
+            });
+        });
+    }
+
+    /// Same as start_share but serves on the local network (Wi-Fi/LAN)
+    /// instead of going through a Cloudflare Tunnel. No extra software
+    /// needed; devices on the same network open the shown URL.
+    pub fn start_lan_share(self: Pin<&mut Self>, paths_json: &QString) {
+        let paths = parse_paths(paths_json);
+        if paths.is_empty() {
+            return;
+        }
+        let compress_folders = match self.get_setting(&q("shareCompressFolders")).to_string().as_str() {
+            "false" => false,
+            _ => true,
+        };
+        let compress_files = match self.get_setting(&q("shareCompressFiles")).to_string().as_str() {
+            "true" => true,
+            _ => false,
+        };
+        let format = match self.get_setting(&q("shareCompressFormat")).to_string().as_str() {
+            "7z" => "7z".to_string(),
+            "tar.gz" => "tar.gz".to_string(),
+            _ => "zip".to_string(),
+        };
+        let password = self.get_setting(&q("sharePassword")).to_string();
+        let expiration_hours = self.get_setting(&q("shareExpirationHours")).to_string().parse::<u32>().unwrap_or(24);
+        let throttle_kbps = self.get_setting(&q("shareThrottleKbps")).to_string().parse::<u32>().unwrap_or(0);
+
+        let params = share::CreateShareParams {
+            paths,
+            compress_folders,
+            compress_files,
+            format,
+            password,
+            expiration_hours,
+            throttle_kbps,
+            lan_only: true,
         };
 
         let thread = self.qt_thread();
@@ -2059,6 +2218,43 @@ impl qobject::LoafCore {
 
     pub fn list_shares_json(&self) -> QString {
         q(&share::get_manager().list_shares_json())
+    }
+
+    pub fn dlna_available(&self) -> bool {
+        dlna::is_available()
+    }
+
+    pub fn refresh_dlna(mut self: Pin<&mut Self>) {
+        let json = dlna::status_json();
+        if self.dlna_status_json().to_string() != json {
+            self.as_mut().set_dlna_status_json(q(&json));
+        }
+    }
+
+    /// Serve a folder to TVs/players on the local network via DLNA.
+    pub fn dlna_start(self: Pin<&mut Self>, path: &QString) {
+        if !dlna::is_available() {
+            self.notify(q("error"), q("rclone is not installed"));
+            return;
+        }
+        let dir = path.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("dlna", "Starting DLNA media server".to_string(), move |_op| {
+            match dlna::start(&dir) {
+                Ok(status) => {
+                    let url = status.url.clone();
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_dlna());
+                    Outcome::ok(format!("DLNA server running at {}", url))
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn dlna_stop(mut self: Pin<&mut Self>) {
+        dlna::stop();
+        self.as_mut().refresh_dlna();
+        self.notify(q("info"), q("DLNA media server stopped"));
     }
 
     pub fn stop_share(self: Pin<&mut Self>, share_id: &QString) -> bool {

@@ -62,6 +62,9 @@ ApplicationWindow {
     function openSmbEditor(profile) {
         var p = profile || {};
         smbDialog.editingId = p.profile_id || p.id || "";
+        smbDialog.protocol = (p.protocol || "smb").toLowerCase();
+        if (smbDialog.protocol !== "sftp" && smbDialog.protocol !== "ftp")
+            smbDialog.protocol = "smb";
         smbNameField.text = p.name || p.label || "";
         smbServerField.text = p.server || "";
         smbShareField.text = p.share || "";
@@ -1415,6 +1418,21 @@ ApplicationWindow {
                         window.openPc();
                         return;
                     }
+                    if (place.kind === "rclone") {
+                        if (!place.connected) {
+                            core.rclone_mount(place.remote);
+                            return;
+                        }
+                        if (inNewTab && place.path) {
+                            window.newTab(place.path);
+                            return;
+                        }
+                        window.showFiles();
+                        searchInput.text = "";
+                        if (place.path)
+                            engine.set_path(place.path);
+                        return;
+                    }
                     if (place.kind === "smb") {
                         if (inNewTab && place.connected && place.path) {
                             window.newTab(place.path);
@@ -2113,8 +2131,35 @@ ApplicationWindow {
                             window.toast("info", qsTr("Preparing link share..."));
                             core.start_share(JSON.stringify(paths));
                         }
+                    },
+                    {
+                        text: qsTr("Share on local network"),
+                        icon: "wifi-high",
+                        action: function() {
+                            window.toast("info", qsTr("Preparing local share..."));
+                            core.start_lan_share(JSON.stringify(paths));
+                        }
                     }
                 ];
+                try {
+                    var dlnaStatus = JSON.parse(core.dlna_status_json || "{}");
+                    if (dlnaStatus.running) {
+                        shareSub.push({
+                            text: qsTr("Stop DLNA server"),
+                            icon: "monitor-play",
+                            action: function() { core.dlna_stop(); }
+                        });
+                    } else if (single && kind === "dir" && core.dlna_available()) {
+                        shareSub.push({
+                            text: qsTr("Serve media via DLNA"),
+                            icon: "monitor-play",
+                            action: function() {
+                                window.toast("info", qsTr("Starting DLNA media server..."));
+                                core.dlna_start(item.path);
+                            }
+                        });
+                    }
+                } catch (e) {}
                 m.push({ text: qsTr("Share…"), icon: "share-network", itemKey: "share", submenu: shareSub });
             }
             m.push({ text: qsTr("Compress"), icon: "file-archive", itemKey: "compress", submenu: compressSubmenu(paths) });
@@ -2269,7 +2314,7 @@ ApplicationWindow {
                     action: function() { customizePlaces.open(); }
                 },
                 {
-                    text: qsTr("Add SMB Share…"),
+                    text: qsTr("Add Network Share…"),
                     icon: "network",
                     action: function() { window.openSmbEditor({}); }
                 }
@@ -2467,6 +2512,16 @@ ApplicationWindow {
             var all = JSON.parse(core.all_places_json() || "[]");
             var idx = all.findIndex(function(p) { return p.id === place.id; });
             var m = [];
+            if (place.kind === "rclone") {
+                if (place.path)
+                    m.push({ text: qsTr("Open in New Tab"), icon: "tabs", action: function() { window.newTab(place.path); } });
+                if (place.connected)
+                    m.push({ text: qsTr("Unmount"), icon: "plug-slash", action: function() { core.rclone_unmount(place.remote); } });
+                else
+                    m.push({ text: qsTr("Mount"), icon: "plug", action: function() { core.rclone_mount(place.remote); } });
+                m.push({ text: qsTr("Move Up"), icon: "arrow-up", separatorBefore: true, enabled: idx > 0, action: function() { core.move_place(place.id, idx - 1); } });
+                m.push({ text: qsTr("Move Down"), icon: "arrow-down", enabled: idx >= 0 && idx < all.length - 1, action: function() { core.move_place(place.id, idx + 1); } });
+            }
             if (place.kind === "smb") {
                 if (place.path && place.connected)
                     m.push({ text: qsTr("Open in New Tab"), icon: "tabs", action: function() { window.newTab(place.path); } });
@@ -2478,7 +2533,7 @@ ApplicationWindow {
                 m.push({ text: qsTr("Remove Share"), icon: "x", danger: true, action: function() { window.removeSmbShare(place.profile_id, place.name); } });
                 m.push({ text: qsTr("Move Up"), icon: "arrow-up", separatorBefore: true, enabled: idx > 0, action: function() { core.move_place(place.id, idx - 1); } });
                 m.push({ text: qsTr("Move Down"), icon: "arrow-down", enabled: idx >= 0 && idx < all.length - 1, action: function() { core.move_place(place.id, idx + 1); } });
-                m.push({ text: qsTr("Add SMB Share…"), icon: "plus", separatorBefore: true, action: function() { window.openSmbEditor({}); } });
+                m.push({ text: qsTr("Add Network Share…"), icon: "plus", separatorBefore: true, action: function() { window.openSmbEditor({}); } });
                 model = m;
                 openAt(x, y);
                 return;
@@ -2738,21 +2793,33 @@ ApplicationWindow {
         id: smbDialog
         dialogWidth: 460
         property string editingId: ""
-        title: editingId.length > 0 ? qsTr("Edit SMB Share") : qsTr("Add SMB Share")
+        property string protocol: "smb"
+        title: editingId.length > 0 ? qsTr("Edit Network Share") : qsTr("Add Network Share")
 
         Text {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             color: theme.textMuted
             font.pixelSize: theme.fs(12)
-            text: qsTr("Connect to a Windows, Samba or NAS share with your username and password.")
+            text: qsTr("Connect to a Windows/Samba (SMB), SSH (SFTP) or FTP server with your username and password.")
+        }
+        Text { text: qsTr("Protocol"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
+        LoafSegmented {
+            Layout.fillWidth: true
+            options: [
+                { value: "smb", label: qsTr("SMB") },
+                { value: "sftp", label: qsTr("SFTP") },
+                { value: "ftp", label: qsTr("FTP") }
+            ]
+            value: smbDialog.protocol
+            onSelected: function(v) { smbDialog.protocol = v; }
         }
         Text { text: qsTr("Display name"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
         LoafTextField { id: smbNameField; Layout.fillWidth: true; color: theme.textMain; placeholderText: qsTr("Studio NAS") }
         Text { text: qsTr("Server"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
         LoafTextField { id: smbServerField; Layout.fillWidth: true; color: theme.textMain; placeholderText: "192.168.1.20" }
-        Text { text: qsTr("Share name"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
-        LoafTextField { id: smbShareField; Layout.fillWidth: true; color: theme.textMain; placeholderText: "media" }
+        Text { text: smbDialog.protocol === "smb" ? qsTr("Share name") : qsTr("Remote path (optional)"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
+        LoafTextField { id: smbShareField; Layout.fillWidth: true; color: theme.textMain; placeholderText: smbDialog.protocol === "smb" ? "media" : "/media" }
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -2765,6 +2832,7 @@ ApplicationWindow {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
+                visible: smbDialog.protocol === "smb"
                 Text { text: qsTr("Domain (optional)"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
                 LoafTextField { id: smbDomainField; Layout.fillWidth: true; color: theme.textMain; placeholderText: "WORKGROUP" }
             }
@@ -2776,16 +2844,16 @@ ApplicationWindow {
             LoafButton {
                 text: smbDialog.editingId.length > 0 ? qsTr("Save") : qsTr("Add")
                 variant: "filled"
-                enabled: smbServerField.text.trim().length > 0 && smbShareField.text.trim().length > 0
+                enabled: smbServerField.text.trim().length > 0 && (smbDialog.protocol !== "smb" || smbShareField.text.trim().length > 0)
                 onClicked: {
-                    var id = core.save_smb_profile(smbDialog.editingId, smbNameField.text, smbServerField.text, smbShareField.text, smbUserField.text, smbDomainField.text);
+                    var id = core.save_smb_profile(smbDialog.editingId, smbDialog.protocol, smbNameField.text, smbServerField.text, smbShareField.text, smbUserField.text, smbDialog.protocol === "smb" ? smbDomainField.text : "");
                     if (id.length === 0) {
-                        window.toast("error", qsTr("A server and share are required"));
+                        window.toast("error", qsTr("A server is required (SMB also needs a share)"));
                         return;
                     }
                     smbDialog.editingId = id;
                     smbDialog.close();
-                    window.toast("info", qsTr("SMB share saved"));
+                    window.toast("info", qsTr("Network share saved"));
                 }
             }
         }
