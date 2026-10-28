@@ -117,4 +117,8 @@ fn main() {
     if let Some(app) = app.as_mut() {
         app.exec();
     }
+    // Background servers must not outlive the UI: kill the DLNA child
+    // process and stop all Wi-Fi / tunnel shares on exit.
+    crate::dlna::stop();
+    crate::share::shutdown_all();
 }

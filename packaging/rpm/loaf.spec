@@ -50,6 +50,8 @@ Suggests:       evince-thumbnailer
 Recommends:     xdg-utils
 Recommends:     libsecret
 Suggests:       polkit
+# Wi-Fi shares work out of the box; rclone powers cloud mounts and DLNA.
+Recommends:     rclone
 
 %description
 Loaf is a fast file manager for Linux with a Material 3 Expressive design:

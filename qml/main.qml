@@ -746,7 +746,11 @@ ApplicationWindow {
         }
         onShare_link_ready: function(shareId, url) {
             nativeBridge.setClipboardText(url);
-            window.toast("info", qsTr("Share link copied to clipboard!"));
+            if (url.indexOf("/s/") !== -1) {
+                wifiShareDialog.openFor(shareId, url);
+            } else {
+                window.toast("info", qsTr("Share link copied to clipboard!"));
+            }
         }
         onShare_link_error: function(message) {
             window.toast("error", qsTr("Could not share via link: ") + message);
@@ -762,6 +766,18 @@ ApplicationWindow {
         id: theme
         // Archives open like folders on double click.
         property bool browseArchives: true
+    }
+
+    // Keep DLNA status fresh so context menus and the Network settings
+    // page don't show a stale running/stopped state.
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            try { core.refresh_dlna(); } catch (e) {}
+        }
     }
 
     FontLoader { source: "qrc:/loaf/fonts/Phosphor.ttf" }
@@ -2135,50 +2151,53 @@ ApplicationWindow {
                 m.push({ text: qsTr("Duplicate"), icon: "copy-simple", itemKey: "duplicate", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "copy", "rename"); } });
                 m.push({ text: qsTr("Make Link"), icon: "link", itemKey: "make_link", action: function() { core.transfer(JSON.stringify(paths), pane.engine.current_path, "link", "rename"); } });
             }
+            // Wi-Fi and DLNA shares are always available (LAN-only, no
+            // account needed). Internet "Share via Link" stays behind the
+            // experimental flag because it needs cloudflared.
+            var shareSub = [
+                {
+                    text: qsTr("Share via Wi-Fi"),
+                    icon: "wifi-high",
+                    action: function() {
+                        window.toast("info", qsTr("Starting Wi-Fi share…"));
+                        core.start_lan_share(JSON.stringify(paths));
+                    }
+                }
+            ];
             if (theme.shareViaLinkEnabled) {
-                var shareSub = [
-                    {
-                        text: qsTr("Share via Link"),
-                        icon: "link",
-                        action: function() {
-                            if (!core.is_cloudflared_installed()) {
-                                window.toast("info", qsTr("Installing Cloudflare Tunnel agent..."));
-                                core.install_cloudflared();
-                            }
-                            window.toast("info", qsTr("Preparing link share..."));
-                            core.start_share(JSON.stringify(paths));
+                shareSub.push({
+                    text: qsTr("Share via Link"),
+                    icon: "link",
+                    action: function() {
+                        if (!core.is_cloudflared_installed()) {
+                            window.toast("info", qsTr("Installing Cloudflare Tunnel agent..."));
+                            core.install_cloudflared();
                         }
-                    },
-                    {
-                        text: qsTr("Share on local network"),
-                        icon: "wifi-high",
-                        action: function() {
-                            window.toast("info", qsTr("Preparing local share..."));
-                            core.start_lan_share(JSON.stringify(paths));
-                        }
+                        window.toast("info", qsTr("Preparing link share..."));
+                        core.start_share(JSON.stringify(paths));
                     }
-                ];
-                try {
-                    var dlnaStatus = JSON.parse(core.dlna_status_json || "{}");
-                    if (dlnaStatus.running) {
-                        shareSub.push({
-                            text: qsTr("Stop DLNA server"),
-                            icon: "monitor-play",
-                            action: function() { core.dlna_stop(); }
-                        });
-                    } else if (single && kind === "dir" && core.dlna_available()) {
-                        shareSub.push({
-                            text: qsTr("Serve media via DLNA"),
-                            icon: "monitor-play",
-                            action: function() {
-                                window.toast("info", qsTr("Starting DLNA media server..."));
-                                core.dlna_start(item.path);
-                            }
-                        });
-                    }
-                } catch (e) {}
-                m.push({ text: qsTr("Share…"), icon: "share-network", itemKey: "share", submenu: shareSub });
+                });
             }
+            try {
+                var dlnaStatus = JSON.parse(core.dlna_status_json || "{}");
+                if (dlnaStatus.running) {
+                    shareSub.push({
+                        text: qsTr("Stop DLNA server"),
+                        icon: "monitor-play",
+                        action: function() { core.dlna_stop(); }
+                    });
+                } else if (single && kind === "dir" && core.dlna_available()) {
+                    shareSub.push({
+                        text: qsTr("Serve media via DLNA"),
+                        icon: "monitor-play",
+                        action: function() {
+                            window.toast("info", qsTr("Starting DLNA media server..."));
+                            core.dlna_start(item.path);
+                        }
+                    });
+                }
+            } catch (e) {}
+            m.push({ text: qsTr("Share…"), icon: "share-network", itemKey: "share", submenu: shareSub });
             m.push({ text: qsTr("Compress"), icon: "file-archive", itemKey: "compress", submenu: compressSubmenu(paths) });
 
             var starred = item.starred === true;
@@ -2262,6 +2281,10 @@ ApplicationWindow {
         }
         if (kind === "dir") {
             m.push({ text: qsTr("Open Terminal Here"), icon: "terminal", itemKey: "terminal", separatorBefore: true, action: function() { core.open_terminal(e.current_path); } });
+            m.push({ text: qsTr("Share this folder via Wi-Fi"), icon: "wifi-high", itemKey: "share", action: function() {
+                window.toast("info", qsTr("Starting Wi-Fi share…"));
+                core.start_lan_share(JSON.stringify([e.current_path]));
+            } });
             var marked = core.is_bookmarked(e.current_path);
             m.push({ text: marked ? qsTr("Remove from Sidebar") : qsTr("Add to Sidebar"), icon: "push-pin", shortcut: "Ctrl+D", itemKey: "pin", action: function() {
                 if (marked)
@@ -2923,6 +2946,40 @@ ApplicationWindow {
                         fn();
                 }
             }
+        }
+    }
+    LoafDialog {
+        id: wifiShareDialog
+        title: qsTr("Share via Wi-Fi")
+        dialogWidth: 460
+        property string shareId: ""
+        property string shareUrl: ""
+        function openFor(id, url) {
+            shareId = id;
+            shareUrl = url;
+            open();
+        }
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Anyone on the same Wi-Fi can open this link in a browser. Files stream directly from this device — keep Loaf open.")
+            color: theme.textMuted
+            font.pixelSize: theme.fs(12)
+            wrapMode: Text.Wrap
+        }
+        LoafTextField {
+            Layout.fillWidth: true
+            readOnly: true
+            text: wifiShareDialog.shareUrl
+            font.family: "monospace"
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Item { Layout.fillWidth: true }
+            LoafButton { text: qsTr("Copy Link"); variant: "tonal"; icon: "copy"; onClicked: { nativeBridge.setClipboardText(wifiShareDialog.shareUrl); window.toast("info", qsTr("Link copied")); } }
+            LoafButton { text: qsTr("Open in Browser"); variant: "tonal"; icon: "arrow-square-out"; onClicked: { Qt.openUrlExternally(wifiShareDialog.shareUrl); } }
+            LoafButton { text: qsTr("Stop"); variant: "danger"; icon: "stop"; onClicked: { core.stop_share(wifiShareDialog.shareId); wifiShareDialog.close(); } }
+            LoafButton { text: qsTr("Done"); variant: "filled"; onClicked: wifiShareDialog.close() }
         }
     }
     LoafDialog {

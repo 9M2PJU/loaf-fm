@@ -1895,6 +1895,102 @@ Item {
                                 }
                             }
                         }
+
+                        // DLNA media server status: rclone serve dlna runs in the
+                        // background; the page polls via refreshDlnaTimer so a
+                        // crash or external kill is reflected here.
+                        Timer {
+                            id: refreshDlnaTimer
+                            interval: 5000
+                            running: tabNetwork.shown
+                            repeat: true
+                            triggeredOnStart: true
+                            onTriggered: { try { core.refresh_dlna(); core.refresh_rclone(); } catch (e) {} }
+                        }
+                        SettingCard {
+                            title: qsTr("DLNA media server")
+                            subtitle: {
+                                try {
+                                    var s = JSON.parse(core.dlna_status_json || "{}");
+                                    if (s.running) return qsTr("Serving “%1” to TVs and players on your Wi-Fi").arg(s.dir);
+                                    return qsTr("Serve a folder to TVs, consoles and VLC on your Wi-Fi (needs rclone)");
+                                } catch (e) { return qsTr("Serve a folder to TVs and players on your Wi-Fi"); }
+                            }
+                            RowLayout {
+                                spacing: 10
+                                Rectangle {
+                                    height: 26
+                                    radius: theme.radiusFull
+                                    color: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainer : theme.surfaceContainerHighest; }
+                                        catch (e) { return theme.surfaceContainerHighest; }
+                                    }
+                                    width: dlnaStatusRow.implicitWidth + 18
+                                    RowLayout {
+                                        id: dlnaStatusRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        LoafIcon {
+                                            name: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? "check-circle" : "monitor-play"; }
+                                                catch (e) { return "monitor-play"; }
+                                            }
+                                            size: 14
+                                            color: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainerFg : theme.textMuted; }
+                                                catch (e) { return theme.textMuted; }
+                                            }
+                                        }
+                                        Text {
+                                            text: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? qsTr("Running") : qsTr("Stopped"); }
+                                                catch (e) { return qsTr("Stopped"); }
+                                            }
+                                            color: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainerFg : theme.textMuted; }
+                                                catch (e) { return theme.textMuted; }
+                                            }
+                                            font.pixelSize: theme.fs(11)
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                LoafTextField {
+                                    Layout.preferredWidth: 260
+                                    readOnly: true
+                                    visible: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running; }
+                                        catch (e) { return false; }
+                                    }
+                                    text: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").url || ""; }
+                                        catch (e) { return ""; }
+                                    }
+                                    font.family: "monospace"
+                                }
+                                LoafButton {
+                                    text: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running ? qsTr("Stop") : qsTr("Stopped"); }
+                                        catch (e) { return qsTr("Stop"); }
+                                    }
+                                    icon: "stop"
+                                    variant: "danger"
+                                    visible: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running; }
+                                        catch (e) { return false; }
+                                    }
+                                    onClicked: { core.dlna_stop(); core.refresh_dlna(); }
+                                }
+                            }
+                            Text {
+                                visible: !core.dlna_available()
+                                text: qsTr("Install rclone to enable DLNA (right-click a folder → Share → Serve media via DLNA).")
+                                color: theme.textMuted
+                                font.pixelSize: theme.fs(11)
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
+                        }
                     }
                     ColumnLayout {
                         id: tabAbout
