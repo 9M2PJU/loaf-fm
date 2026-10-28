@@ -100,7 +100,11 @@ Legend: `[x]` done, `[~]` partial / missing a piece, `[ ]` not started
 
 ## Network, Cloud & Remote Storage
 - [x] **Named SMB Profile Manager**: Friendly aliases for SMB connections.
-- [ ] **Remote Protocols & Cloud Services**: SFTP, FTP, WebDAV, Google Drive, and Microsoft OneDrive mounting support.
+- [x] **Remote Protocols (SMB/SFTP/FTP)**: Mount Windows/Samba, SSH and FTP servers via GVfs with saved profiles and keyring passwords.
+- [x] **rclone Remotes**: List configured rclone remotes (Google Drive, OneDrive, S3, …) and mount/unmount them; mounted remotes appear in the sidebar.
+- [x] **DLNA Media Server**: Serve a folder to TVs/players on the local network via `rclone serve dlna`.
+- [x] **Share on Local Network**: Serve files over LAN/Wi-Fi with a direct `http://<lan-ip>` URL (no tunnel needed).
+- [ ] **Remote Protocols & Cloud Services (remaining)**: WebDAV mounting support.
 - [x] **Keyring Integration**: Secure password storage in system keyring for SMB and encrypted volumes.
 
 ---

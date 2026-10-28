@@ -7,6 +7,8 @@ use std::process::Command;
 pub struct Profile {
     #[serde(default)]
     pub id: String,
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -21,9 +23,33 @@ pub struct Profile {
     pub remember: bool,
 }
 
+fn default_protocol() -> String {
+    "smb".to_string()
+}
+
+/// Normalized protocol: "smb", "sftp" or "ftp". Older stored profiles
+/// predate the field and default to SMB.
+pub fn protocol_of(profile: &Profile) -> &str {
+    match profile.protocol.trim().to_lowercase().as_str() {
+        "sftp" | "ssh" => "sftp",
+        "ftp" | "ftps" => "ftp",
+        _ => "smb",
+    }
+}
+
+/// Remote path for SFTP/FTP profiles (the `share` field doubles as the
+/// remote path); empty for SMB or when unset.
+pub fn remote_path(profile: &Profile) -> String {
+    if protocol_of(profile) == "smb" {
+        return String::new();
+    }
+    profile.share.trim().trim_matches('/').to_string()
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ProfileState {
     pub id: String,
+    pub protocol: String,
     pub name: String,
     pub server: String,
     pub share: String,
@@ -92,7 +118,7 @@ fn secret_tool() -> Option<PathBuf> {
     util::which("secret-tool")
 }
 
-fn split_server(value: &str) -> (&str, Option<u32>) {
+pub(crate) fn split_server(value: &str) -> (&str, Option<u32>) {
     let value = value.trim();
     if let Some(rest) = value.strip_prefix('[') {
         if let Some((host, tail)) = rest.split_once(']') {
@@ -118,7 +144,7 @@ fn keyring_attributes(profile: &Profile) -> Vec<String> {
         "server".to_string(),
         host.to_string(),
         "protocol".to_string(),
-        "smb".to_string(),
+        protocol_of(profile).to_string(),
     ];
     let username = profile.username.trim();
     let domain = profile.domain.trim();
@@ -162,7 +188,7 @@ pub fn store_password(profile: &Profile, password: &str) -> bool {
     clear.arg("clear");
     clear.args(keyring_attributes(profile));
     let _ = util::run_capture(clear, None);
-    let label = format!("Loaf: SMB share {}", profile.label());
+    let label = format!("Loaf: {} share {}", protocol_of(profile).to_uppercase(), profile.label());
     let mut cmd = Command::new(tool);
     cmd.args(["store", "--label", &label, "--collection", "default"]);
     cmd.args(keyring_attributes(profile));
@@ -209,6 +235,33 @@ fn encode_path(value: &str) -> String {
 }
 
 pub fn uri(profile: &Profile) -> String {
+    let proto = protocol_of(profile);
+    if proto == "smb" {
+        return smb_uri(profile);
+    }
+    // SFTP / FTP via GVfs: sftp://[user@]host[:port]/path
+    let mut userinfo = String::new();
+    let username = profile.username.trim();
+    if !username.is_empty() {
+        userinfo.push_str(&encode(username));
+        userinfo.push('@');
+    }
+    let (host, port) = split_server(&profile.server);
+    let mut base = format!("{}://{}{}", proto, userinfo, host);
+    if let Some(port) = port {
+        base.push_str(&format!(":{}", port));
+    }
+    let path = encode_path(profile.share.trim());
+    if path.is_empty() {
+        base.push('/');
+    } else {
+        base.push('/');
+        base.push_str(&path);
+    }
+    base
+}
+
+fn smb_uri(profile: &Profile) -> String {
     let mut userinfo = String::new();
     let domain = profile.domain.trim();
     let username = profile.username.trim();
@@ -230,25 +283,41 @@ pub fn uri(profile: &Profile) -> String {
 }
 
 struct MountEntry {
+    kind: String,
     server: String,
     share: String,
+    path: String,
     user: String,
     domain: String,
     port: Option<u32>,
 }
 
 fn parse_mount_entry(name: &str) -> Option<MountEntry> {
-    let rest = name.strip_prefix("smb-share:")?;
+    // GVfs runtime dir names look like:
+    //   smb-share:server=nas,share=media,user=alice
+    //   sftp:host=nas,user=alice,port=22
+    //   ftp:host=nas,user=alice,port=21
+    let (kind, rest) = if let Some(rest) = name.strip_prefix("smb-share:") {
+        ("smb", rest)
+    } else if let Some(rest) = name.strip_prefix("sftp:") {
+        ("sftp", rest)
+    } else if let Some(rest) = name.strip_prefix("ftp:") {
+        ("ftp", rest)
+    } else {
+        return None;
+    };
     let mut server = String::new();
     let mut share = String::new();
+    let mut path = String::new();
     let mut user = String::new();
     let mut domain = String::new();
     let mut port = None;
     for part in rest.split(',') {
         let Some((key, value)) = part.split_once('=') else { continue };
         match key {
-            "server" => server = value.to_string(),
+            "server" | "host" => server = value.to_string(),
             "share" => share = value.to_string(),
+            "path" => path = value.to_string(),
             "user" => user = value.to_string(),
             "domain" => domain = value.to_string(),
             "port" => port = value.parse::<u32>().ok(),
@@ -258,7 +327,7 @@ fn parse_mount_entry(name: &str) -> Option<MountEntry> {
     if server.is_empty() {
         return None;
     }
-    Some(MountEntry { server, share, user, domain, port })
+    Some(MountEntry { kind: kind.to_string(), server, share, path, user, domain, port })
 }
 
 fn same(a: &str, b: &str) -> bool {
@@ -268,29 +337,46 @@ fn same(a: &str, b: &str) -> bool {
 pub fn connected_path(profile: &Profile) -> Option<PathBuf> {
     let dir = gvfs_dir();
     let entries = std::fs::read_dir(&dir).ok()?;
+    let proto = protocol_of(profile);
     let (want_server, want_port) = split_server(&profile.server);
-    let want_share = profile.share.trim().trim_matches('/');
     let want_user = profile.username.trim();
     let want_domain = profile.domain.trim();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         let Some(found) = parse_mount_entry(&name) else { continue };
+        if found.kind != proto {
+            continue;
+        }
         if !same(&found.server, want_server) {
             continue;
         }
         if found.port != want_port {
             continue;
         }
-        if !same(found.share.trim_matches('/'), want_share) {
-            continue;
-        }
         if !want_user.is_empty() && !found.user.is_empty() && !same(&found.user, want_user) {
             continue;
         }
-        if !want_domain.is_empty() && !found.domain.is_empty() && !same(&found.domain, want_domain) {
+        if proto == "smb" {
+            let want_share = profile.share.trim().trim_matches('/');
+            if !same(found.share.trim_matches('/'), want_share) {
+                continue;
+            }
+            if !want_domain.is_empty() && !found.domain.is_empty() && !same(&found.domain, want_domain) {
+                continue;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                return Some(path);
+            }
             continue;
         }
-        let path = entry.path();
+        // SFTP/FTP mounts cover the whole host; the profile path (if any)
+        // is a subfolder inside the GVfs mount.
+        let mut path = entry.path();
+        let want_path = remote_path(profile);
+        if !want_path.is_empty() {
+            path = path.join(want_path);
+        }
         if path.is_dir() {
             return Some(path);
         }
@@ -363,6 +449,7 @@ pub fn state_for(profile: &Profile) -> ProfileState {
     let path = connected_path(profile);
     ProfileState {
         id: profile.id.clone(),
+        protocol: protocol_of(profile).to_string(),
         name: profile.name.clone(),
         server: profile.server.clone(),
         share: profile.share.clone(),
@@ -386,11 +473,25 @@ mod tests {
     fn profile() -> Profile {
         Profile {
             id: "one".into(),
+            protocol: "smb".into(),
             name: "Media".into(),
             server: "nas.local".into(),
             share: "media/movies".into(),
             username: "alice".into(),
             domain: "WORKGROUP".into(),
+            remember: false,
+        }
+    }
+
+    fn sftp_profile() -> Profile {
+        Profile {
+            id: "two".into(),
+            protocol: "sftp".into(),
+            name: "Seedbox".into(),
+            server: "seed.example.com:2222".into(),
+            share: "media".into(),
+            username: "bob".into(),
+            domain: String::new(),
             remember: false,
         }
     }
@@ -423,11 +524,44 @@ mod tests {
                 "WORKGROUP",
             ]
         );
+        assert_eq!(
+            keyring_attributes(&sftp_profile()),
+            vec![
+                "xdg:schema",
+                GVFS_SCHEMA,
+                "server",
+                "seed.example.com",
+                "protocol",
+                "sftp",
+                "user",
+                "bob",
+                "port",
+                "2222",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_sftp_and_ftp_uris() {
+        assert_eq!(uri(&sftp_profile()), "sftp://bob@seed.example.com:2222/media");
+        let anon = Profile { protocol: "ftp".into(), username: String::new(), server: "ftp.example.com".into(), share: "pub".into(), ..sftp_profile() };
+        assert_eq!(uri(&anon), "ftp://ftp.example.com/pub");
+        let root = Profile { share: String::new(), ..sftp_profile() };
+        assert_eq!(uri(&root), "sftp://bob@seed.example.com:2222/");
+    }
+
+    #[test]
+    fn normalizes_protocols() {
+        let ssh = Profile { protocol: "SSH".into(), ..sftp_profile() };
+        assert_eq!(protocol_of(&ssh), "sftp");
+        let legacy = Profile { protocol: String::new(), ..sftp_profile() };
+        assert_eq!(protocol_of(&legacy), "smb");
     }
 
     #[test]
     fn reads_mount_entries() {
         let entry = parse_mount_entry("smb-share:server=nas.local,share=media,user=alice").unwrap();
+        assert_eq!(entry.kind, "smb");
         assert_eq!(entry.server, "nas.local");
         assert_eq!(entry.share, "media");
         assert_eq!(entry.user, "alice");
@@ -436,6 +570,15 @@ mod tests {
         assert!(parse_mount_entry("smb-share:share=media").is_none());
         let entry = parse_mount_entry("smb-share:domain=WORKGROUP,port=4455,server=127.0.0.1,share=media,user=archy").unwrap();
         assert_eq!(entry.port, Some(4455));
+        let entry = parse_mount_entry("sftp:host=seed.example.com,user=bob,port=2222").unwrap();
+        assert_eq!(entry.kind, "sftp");
+        assert_eq!(entry.server, "seed.example.com");
+        assert_eq!(entry.user, "bob");
+        assert_eq!(entry.port, Some(2222));
+        let entry = parse_mount_entry("ftp:host=ftp.example.com,user=anonymous").unwrap();
+        assert_eq!(entry.kind, "ftp");
+        assert!(parse_mount_entry("sftp:user=bob").is_none());
+        assert!(parse_mount_entry("mtp:host=[usb:001,005]").is_none());
     }
 
     #[test]

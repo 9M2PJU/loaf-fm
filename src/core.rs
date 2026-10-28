@@ -25,6 +25,8 @@ pub mod qobject {
         #[qproperty(QString, frequent_dirs_json)]
         #[qproperty(QString, places_json)]
         #[qproperty(QString, smb_profiles_json)]
+        #[qproperty(QString, rclone_remotes_json)]
+        #[qproperty(QString, dlna_status_json)]
         #[qproperty(QString, operations_json)]
         #[qproperty(bool, busy)]
         #[qproperty(bool, can_undo)]
@@ -132,6 +134,7 @@ pub mod qobject {
         fn save_smb_profile(
             self: Pin<&mut LoafCore>,
             id: &QString,
+            protocol: &QString,
             name: &QString,
             server: &QString,
             share: &QString,
@@ -144,6 +147,14 @@ pub mod qobject {
         fn connect_smb(self: Pin<&mut LoafCore>, id: &QString, password: &QString, remember: bool);
         #[qinvokable]
         fn disconnect_smb(self: Pin<&mut LoafCore>, id: &QString);
+        #[qinvokable]
+        fn refresh_rclone(self: Pin<&mut LoafCore>);
+        #[qinvokable]
+        fn rclone_mount(self: Pin<&mut LoafCore>, remote: &QString);
+        #[qinvokable]
+        fn rclone_unmount(self: Pin<&mut LoafCore>, remote: &QString);
+        #[qinvokable]
+        fn rclone_available(self: &LoafCore) -> bool;
         #[qinvokable]
         fn open_item(self: Pin<&mut LoafCore>, path: &QString);
         #[qinvokable]
@@ -174,6 +185,11 @@ pub mod qobject {
         /// shared GTK bookmarks file) with the system's default handler.
         #[qinvokable]
         fn open_uri(self: Pin<&mut LoafCore>, uri: &QString);
+        /// Open a sidebar network bookmark (e.g. a GTK sftp:// bookmark).
+        /// Returns open:<local-path>, connect:<profile-id>, add:<prefill-json>
+        /// or external:<uri> for QML to act on.
+        #[qinvokable]
+        fn open_network_place(self: &LoafCore, uri: &QString, label: &QString) -> QString;
         #[qinvokable]
         fn quick_look(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
@@ -230,6 +246,16 @@ pub mod qobject {
         #[qinvokable]
         fn start_share(self: Pin<&mut LoafCore>, paths_json: &QString);
         #[qinvokable]
+        fn start_lan_share(self: Pin<&mut LoafCore>, paths_json: &QString);
+        #[qinvokable]
+        fn dlna_available(self: &LoafCore) -> bool;
+        #[qinvokable]
+        fn dlna_start(self: Pin<&mut LoafCore>, path: &QString);
+        #[qinvokable]
+        fn dlna_stop(self: Pin<&mut LoafCore>);
+        #[qinvokable]
+        fn refresh_dlna(self: Pin<&mut LoafCore>);
+        #[qinvokable]
         fn list_shares_json(self: &LoafCore) -> QString;
         #[qinvokable]
         fn stop_share(self: Pin<&mut LoafCore>, share_id: &QString) -> bool;
@@ -244,7 +270,7 @@ pub mod qobject {
 use crate::archive::{self, ArchiveError};
 use crate::fsops::{self, Monitor};
 use crate::share;
-use crate::{apps, drives, icons, info, native, smb, state, theme, trash, util, watcher, xdg};
+use crate::{apps, dlna, drives, icons, info, native, rclone, smb, state, theme, trash, util, watcher, xdg};
 use core::pin::Pin;
 use cxx_qt::{CxxQtThread, CxxQtType, Threading};
 use cxx_qt_lib::QString;
@@ -342,6 +368,8 @@ pub struct CoreRust {
     frequent_dirs_json: QString,
     places_json: QString,
     smb_profiles_json: QString,
+    rclone_remotes_json: QString,
+    dlna_status_json: QString,
     operations_json: QString,
     busy: bool,
     can_undo: bool,
@@ -376,6 +404,8 @@ impl Default for CoreRust {
             frequent_dirs_json: QString::from("[]"),
             places_json: QString::from("[]"),
             smb_profiles_json: QString::from("[]"),
+            rclone_remotes_json: QString::from("[]"),
+            dlna_status_json: QString::from("{\"running\":false}"),
             operations_json: QString::from("[]"),
             busy: false,
             can_undo: false,
@@ -490,6 +520,72 @@ fn save_places_config(c: &PlacesConfig) {
     state::set("placesConfig", &serde_json::to_string(c).unwrap_or_default());
 }
 
+/// What clicking a sidebar network bookmark should do.
+#[derive(Debug)]
+enum NetworkAction {
+    /// Browse the already-mounted folder.
+    Open(String),
+    /// Mount via the saved profile, then browse (see `smb_mounted`).
+    Connect(String),
+    /// No saved profile matches: prefill the Add dialog from the URI.
+    Add(String),
+    /// Not a mountable scheme (http://, …): hand to the system handler.
+    External(String),
+}
+
+/// Match a network URI (smb://, sftp://, ftp://) against saved remote
+/// profiles: open it if mounted, connect if a profile matches, otherwise
+/// return prefill JSON for the Add Network Share dialog.
+fn network_place_action(profiles: &[smb::Profile], uri: &str, label: &str) -> NetworkAction {
+    let Some((scheme, rest)) = uri.split_once("://") else {
+        return NetworkAction::External(uri.to_string());
+    };
+    let scheme = scheme.to_lowercase();
+    if scheme != "smb" && scheme != "sftp" && scheme != "ftp" {
+        return NetworkAction::External(uri.to_string());
+    }
+    // [user[:password]@]host[:port][/path]
+    let (authority, want_path) = match rest.split_once('/') {
+        Some((a, p)) => (a, p.trim().trim_matches('/').to_string()),
+        None => (rest, String::new()),
+    };
+    let (userinfo, hostport) = match authority.split_once('@') {
+        Some((u, h)) => (u, h),
+        None => ("", authority),
+    };
+    let username = userinfo.split(':').next().unwrap_or("").trim();
+    let (want_host, want_port) = smb::split_server(hostport);
+    for p in profiles {
+        if smb::protocol_of(p) != scheme {
+            continue;
+        }
+        let (host, port) = smb::split_server(&p.server);
+        if !host.eq_ignore_ascii_case(want_host) || port != want_port {
+            continue;
+        }
+        if !username.is_empty() && !p.username.trim().is_empty()
+            && !p.username.trim().eq_ignore_ascii_case(username)
+        {
+            continue;
+        }
+        if p.share.trim().trim_matches('/') != want_path {
+            continue;
+        }
+        if let Some(local) = smb::connected_path(p) {
+            return NetworkAction::Open(local.to_string_lossy().to_string());
+        }
+        return NetworkAction::Connect(p.id.clone());
+    }
+    let prefill = serde_json::json!({
+        "protocol": scheme,
+        "server": hostport,
+        "share": want_path,
+        "username": username,
+        "name": label,
+    });
+    NetworkAction::Add(prefill.to_string())
+}
+
 /// Sidebar entry for a non-file (network) GTK bookmark, e.g. a remote
 /// URI saved by Nemo/Nautilus. Returns `None` for `file://`
 /// bookmarks (handled separately) and for lines that are not URIs.
@@ -560,12 +656,35 @@ fn build_places(hostname: &str, device_type: &str) -> Vec<serde_json::Value> {
             "icon": "network",
             "system_icon": "folder-remote-symbolic",
             "profile_id": p.id,
+            "protocol": state.protocol,
             "server": p.server,
             "share": p.share,
             "username": p.username,
             "domain": p.domain,
             "connected": state.connected,
         }));
+    }
+    {
+        // All configured rclone remotes (mounted or not): click an
+        // unmounted one to mount it, click a mounted one to open it.
+        let mounted = rclone::mounted_map();
+        for name in rclone::list_remotes() {
+            let path = mounted
+                .get(&name)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let connected = !path.is_empty();
+            items.push(serde_json::json!({
+                "id": format!("rclone:{}", name),
+                "kind": "rclone",
+                "name": name,
+                "path": path,
+                "icon": "cloud",
+                "system_icon": "folder-remote-symbolic",
+                "remote": name,
+                "connected": connected,
+            }));
+        }
     }
     items.push(serde_json::json!({"id": "trash", "kind": "trash", "name": "Trash", "path": "trash:///", "icon": "trash", "system_icon": "user-trash-symbolic"}));
 
@@ -831,12 +950,22 @@ impl qobject::LoafCore {
     }
 
     pub fn remove_bookmark(self: Pin<&mut Self>, path: &QString) {
-        let _ = xdg::remove_bookmark(Path::new(&path.to_string()));
+        let p = path.to_string();
+        if p.contains("://") {
+            let _ = xdg::remove_bookmark_uri(&p);
+        } else {
+            let _ = xdg::remove_bookmark(Path::new(&p));
+        }
         self.load_places();
     }
 
     pub fn rename_bookmark(self: Pin<&mut Self>, path: &QString, label: &QString) {
-        let _ = xdg::rename_bookmark(Path::new(&path.to_string()), &label.to_string());
+        let p = path.to_string();
+        if p.contains("://") {
+            let _ = xdg::rename_bookmark_uri(&p, &label.to_string());
+        } else {
+            let _ = xdg::rename_bookmark(Path::new(&p), &label.to_string());
+        }
         self.load_places();
     }
 
@@ -889,6 +1018,17 @@ impl qobject::LoafCore {
     pub fn edit_place(mut self: Pin<&mut Self>, id: &QString, name: &QString, path: &QString) {
         let id = id.to_string();
         let path_s = path.to_string();
+        // Network bookmarks live in the shared GTK bookmarks file: rename
+        // or repoint the URI entry instead of touching Loaf's own config.
+        if let Some(uri) = id.strip_prefix("network:") {
+            if path_s.trim().is_empty() || !path_s.contains("://") {
+                self.as_mut().notify(q("error"), q("Enter a valid server address, e.g. sftp://nas/media"));
+                return;
+            }
+            let _ = xdg::replace_bookmark_uri(uri, path_s.trim(), &name.to_string());
+            self.load_places();
+            return;
+        }
         if !Path::new(&path_s).is_dir() {
             self.as_mut().notify(q("error"), q("That folder doesn't exist"));
             return;
@@ -1057,6 +1197,7 @@ impl qobject::LoafCore {
     pub fn save_smb_profile(
         mut self: Pin<&mut Self>,
         id: &QString,
+        protocol: &QString,
         name: &QString,
         server: &QString,
         share: &QString,
@@ -1065,10 +1206,22 @@ impl qobject::LoafCore {
     ) -> QString {
         let server = server.to_string();
         let server = server.trim();
+        let proto = match protocol.to_string().trim().to_lowercase().as_str() {
+            "sftp" | "ssh" => "sftp",
+            "ftp" | "ftps" => "ftp",
+            _ => "smb",
+        }
+        .to_string();
+        // SMB needs a share name (first segment only); SFTP/FTP take a full
+        // remote path (or empty for the account root).
         let share_text = share.to_string();
         let share_text = share_text.trim().trim_matches('/');
-        let share_text = share_text.split('/').next().unwrap_or("").trim();
-        if server.is_empty() || share_text.is_empty() {
+        let share_text = if proto == "smb" {
+            share_text.split('/').next().unwrap_or("").trim().to_string()
+        } else {
+            share_text.to_string()
+        };
+        if server.is_empty() || (proto == "smb" && share_text.is_empty()) {
             return QString::default();
         }
         let current = id.to_string();
@@ -1080,6 +1233,7 @@ impl qobject::LoafCore {
         let previous = list.iter().find(|p| p.id == profile_id).cloned();
         let mut profile = smb::Profile {
             id: profile_id.clone(),
+            protocol: proto.clone(),
             name: name.trim().to_string(),
             server: server.to_string(),
             share: share_text.to_string(),
@@ -1088,7 +1242,8 @@ impl qobject::LoafCore {
             remember: previous.as_ref().map(|p| p.remember).unwrap_or(false),
         };
         let identity_changed = previous.as_ref().map(|old| {
-            old.server != profile.server
+            old.protocol != profile.protocol
+                || old.server != profile.server
                 || old.username != profile.username
                 || old.domain != profile.domain
         }).unwrap_or(false);
@@ -1159,7 +1314,7 @@ impl qobject::LoafCore {
     pub fn connect_smb(mut self: Pin<&mut Self>, id: &QString, password: &QString, remember: bool) {
         let profile_id = id.to_string();
         let Some(profile) = smb::profiles().into_iter().find(|p| p.id == profile_id) else {
-            self.as_mut().notify(q("error"), q("That SMB share no longer exists"));
+            self.as_mut().notify(q("error"), q("That network share no longer exists"));
             return;
         };
         let typed = password.to_string();
@@ -1234,6 +1389,50 @@ impl qobject::LoafCore {
             match smb::unmount(&profile) {
                 Ok(()) => {
                     let _ = thread.queue(|mut core| core.as_mut().refresh_smb());
+                    Outcome::ok(String::new())
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn refresh_rclone(mut self: Pin<&mut Self>) {
+        let json = rclone::status_json();
+        if self.rclone_remotes_json().to_string() != json {
+            self.as_mut().set_rclone_remotes_json(q(&json));
+        }
+        self.as_mut().load_places();
+    }
+
+    pub fn rclone_available(&self) -> bool {
+        rclone::is_available()
+    }
+
+    pub fn rclone_mount(self: Pin<&mut Self>, remote: &QString) {
+        if !rclone::is_available() {
+            self.notify(q("error"), q("rclone is not installed"));
+            return;
+        }
+        let name = remote.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("rclone", format!("Mounting {}", name), move |_op| {
+            match rclone::mount(&name) {
+                Ok(path) => {
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_rclone());
+                    Outcome::ok(format!("{} is available at {}", name, path))
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn rclone_unmount(self: Pin<&mut Self>, remote: &QString) {
+        let name = remote.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("rclone", format!("Unmounting {}", name), move |_op| {
+            match rclone::unmount(&name) {
+                Ok(()) => {
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_rclone());
                     Outcome::ok(String::new())
                 }
                 Err(e) => Outcome::err(e),
@@ -1497,6 +1696,18 @@ impl qobject::LoafCore {
         if !launched {
             self.as_mut().notify(q("error"), q(&format!("No application can open “{}”", u)));
         }
+    }
+
+    /// Decide what clicking a network bookmark (smb://, sftp://, ftp://,
+    /// …) should do. Anything Loaf can't mount itself falls through to
+    /// the system's default application.
+    pub fn open_network_place(&self, uri: &QString, label: &QString) -> QString {
+        q(&match network_place_action(&smb::profiles(), &uri.to_string(), &label.to_string()) {
+            NetworkAction::Open(path) => format!("open:{}", path),
+            NetworkAction::Connect(id) => format!("connect:{}", id),
+            NetworkAction::Add(prefill) => format!("add:{}", prefill),
+            NetworkAction::External(uri) => format!("external:{}", uri),
+        })
     }
     pub fn quick_look(&self, path: &QString) -> QString {
         q(&serde_json::to_string(&info::quick_look(Path::new(&path.to_string()))).unwrap_or_else(|_| "{}".into()))
@@ -2040,6 +2251,58 @@ impl qobject::LoafCore {
             password,
             expiration_hours,
             throttle_kbps,
+            lan_only: false,
+        };
+
+        let thread = self.qt_thread();
+        share::start_share_pipeline(params, move |result| {
+            let _ = thread.queue(move |mut core| {
+                match result {
+                    Ok((id, url)) => {
+                        core.as_mut().share_link_ready(q(&id), q(&url));
+                    }
+                    Err(e) => {
+                        core.as_mut().share_link_error(q(&e));
+                    }
+                }
+            });
+        });
+    }
+
+    /// Same as start_share but serves on the local network (Wi-Fi/LAN)
+    /// instead of going through a Cloudflare Tunnel. No extra software
+    /// needed; devices on the same network open the shown URL.
+    pub fn start_lan_share(self: Pin<&mut Self>, paths_json: &QString) {
+        let paths = parse_paths(paths_json);
+        if paths.is_empty() {
+            return;
+        }
+        let compress_folders = match self.get_setting(&q("shareCompressFolders")).to_string().as_str() {
+            "false" => false,
+            _ => true,
+        };
+        let compress_files = match self.get_setting(&q("shareCompressFiles")).to_string().as_str() {
+            "true" => true,
+            _ => false,
+        };
+        let format = match self.get_setting(&q("shareCompressFormat")).to_string().as_str() {
+            "7z" => "7z".to_string(),
+            "tar.gz" => "tar.gz".to_string(),
+            _ => "zip".to_string(),
+        };
+        let password = self.get_setting(&q("sharePassword")).to_string();
+        let expiration_hours = self.get_setting(&q("shareExpirationHours")).to_string().parse::<u32>().unwrap_or(24);
+        let throttle_kbps = self.get_setting(&q("shareThrottleKbps")).to_string().parse::<u32>().unwrap_or(0);
+
+        let params = share::CreateShareParams {
+            paths,
+            compress_folders,
+            compress_files,
+            format,
+            password,
+            expiration_hours,
+            throttle_kbps,
+            lan_only: true,
         };
 
         let thread = self.qt_thread();
@@ -2059,6 +2322,43 @@ impl qobject::LoafCore {
 
     pub fn list_shares_json(&self) -> QString {
         q(&share::get_manager().list_shares_json())
+    }
+
+    pub fn dlna_available(&self) -> bool {
+        dlna::is_available()
+    }
+
+    pub fn refresh_dlna(mut self: Pin<&mut Self>) {
+        let json = dlna::status_json();
+        if self.dlna_status_json().to_string() != json {
+            self.as_mut().set_dlna_status_json(q(&json));
+        }
+    }
+
+    /// Serve a folder to TVs/players on the local network via DLNA.
+    pub fn dlna_start(self: Pin<&mut Self>, path: &QString) {
+        if !dlna::is_available() {
+            self.notify(q("error"), q("rclone is not installed"));
+            return;
+        }
+        let dir = path.to_string();
+        let thread = self.qt_thread();
+        self.spawn_op("dlna", "Starting DLNA media server".to_string(), move |_op| {
+            match dlna::start(&dir) {
+                Ok(status) => {
+                    let url = status.url.clone();
+                    let _ = thread.queue(|mut core| core.as_mut().refresh_dlna());
+                    Outcome::ok(format!("DLNA server running at {}", url))
+                }
+                Err(e) => Outcome::err(e),
+            }
+        });
+    }
+
+    pub fn dlna_stop(mut self: Pin<&mut Self>) {
+        dlna::stop();
+        self.as_mut().refresh_dlna();
+        self.notify(q("info"), q("DLNA media server stopped"));
     }
 
     pub fn stop_share(self: Pin<&mut Self>, share_id: &QString) -> bool {
@@ -2526,6 +2826,47 @@ mod tests {
         assert!(network_place(&local).is_none());
         let junk = xdg::Bookmark { uri: "not a uri".to_string(), label: String::new() };
         assert!(network_place(&junk).is_none());
+    }
+
+    #[test]
+    fn network_place_action_matches_profiles() {
+        let profile = smb::Profile {
+            id: "nas".into(),
+            protocol: "sftp".into(),
+            name: "NAS".into(),
+            // TEST-NET-2: guaranteed unroutable, so never actually mounted.
+            server: "198.51.100.7".into(),
+            share: "".into(),
+            username: "pju".into(),
+            domain: "".into(),
+            remember: false,
+        };
+        let profiles = vec![profile];
+        // Exact match, not mounted here -> connect by profile id.
+        match network_place_action(&profiles, "sftp://pju@198.51.100.7/", "NAS-Kerkut") {
+            NetworkAction::Connect(id) => assert_eq!(id, "nas"),
+            other => panic!("expected Connect, got {:?}", other),
+        }
+        // Different path -> prefill the Add dialog, not a blind connect.
+        match network_place_action(&profiles, "sftp://pju@198.51.100.7/media", "Media") {
+            NetworkAction::Add(json) => {
+                let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(v["protocol"], "sftp");
+                assert_eq!(v["server"], "198.51.100.7");
+                assert_eq!(v["share"], "media");
+                assert_eq!(v["username"], "pju");
+            }
+            _ => panic!("expected Add"),
+        }
+        // Unknown server -> prefill; non-mountable scheme -> external.
+        assert!(matches!(
+            network_place_action(&profiles, "sftp://pju@other-nas/", "X"),
+            NetworkAction::Add(_)
+        ));
+        assert!(matches!(
+            network_place_action(&profiles, "https://nas.local/", "Web UI"),
+            NetworkAction::External(_)
+        ));
     }
 
     #[test]

@@ -44,7 +44,8 @@ Item {
     readonly property bool card18Match: matchesQuery("search file contents text inside")
     readonly property bool card19Match: matchesQuery("experimental share via link cloudflare tunnel p2p host local send")
     readonly property bool card20Match: matchesQuery("share settings link compression password expiration throttle active shares cloudflare tunnel")
-    readonly property bool card21Match: matchesQuery("network smb samba nas share server mount connect remote windows keyring")
+    readonly property bool card21Match: matchesQuery("network smb samba sftp ftp ssh nas share server mount connect remote windows keyring rclone cloud dlna media lan wifi")
+    readonly property bool card22Match: matchesQuery("rclone cloud drive mount remote google onedrive dropbox s3")
 
     readonly property int interfaceMatches: (card1Match ? 1 : 0) + (opacityMatch ? 1 : 0) + (card2Match ? 1 : 0) + (card4Match ? 1 : 0) + (card5Match ? 1 : 0)
     readonly property int behaviorMatches: (card6Match ? 1 : 0) + (card7Match ? 1 : 0) + (card8Match ? 1 : 0) + (card9Match ? 1 : 0)
@@ -52,7 +53,7 @@ Item {
     readonly property int accessibilityMatches: (card13Match ? 1 : 0) + (card14Match ? 1 : 0) + (card15Match ? 1 : 0)
     readonly property int experimentalMatches: (card10Match ? 1 : 0) + (card12Match ? 1 : 0) + (card19Match ? 1 : 0)
     readonly property int shareMatches: theme.shareViaLinkEnabled && card20Match ? 1 : 0
-    readonly property int networkMatches: (card21Match ? 1 : 0)
+    readonly property int networkMatches: (card21Match ? 1 : 0) + (card22Match ? 1 : 0)
     readonly property int aboutMatches: (card11Match ? 1 : 0)
     readonly property int totalMatches: interfaceMatches + behaviorMatches + accessibilityMatches + experimentalMatches + shareMatches + networkMatches + aboutMatches
 
@@ -1663,7 +1664,20 @@ Item {
                             }
                         }
 
+                        readonly property var rcloneRemotes: {
+                            try {
+                                return JSON.parse(core.rclone_remotes_json || "[]");
+                            } catch (e) {
+                                return [];
+                            }
+                        }
+
                         readonly property bool shown: settingsView.searchQuery.length > 0 ? (settingsView.networkMatches > 0) : (settingsView.activeTab === 6)
+                        onShownChanged: {
+                            if (shown && typeof core !== "undefined" && core) {
+                                try { core.refresh_rclone(); } catch (e) {}
+                            }
+                        }
                         readonly property real fadeOverlap: settingsView.fadeOverlapAbove(tabNetwork)
                         property real slideOffset: shown ? 0 : 6
 
@@ -1685,7 +1699,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
-                                text: qsTr("Saved SMB Shares")
+                                text: qsTr("Saved Network Shares")
                                 color: theme.textMain
                                 font.pixelSize: theme.fs(15)
                                 font.bold: true
@@ -1705,7 +1719,7 @@ Item {
                             wrapMode: Text.Wrap
                             color: theme.textMuted
                             font.pixelSize: theme.fs(12)
-                            text: qsTr("No shares saved yet. Add a server and share, then connect with your username and password. Connected shares appear in the sidebar and open like local folders.")
+                            text: qsTr("No shares saved yet. Add an SMB, SFTP or FTP server, then connect with your username and password. Connected shares appear in the sidebar and open like local folders.")
                         }
 
                         Repeater {
@@ -1745,7 +1759,7 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             Layout.minimumWidth: 0
-                                            text: (modelData.username ? modelData.username + "@" : "") + modelData.server + (modelData.share ? "/" + modelData.share : "")
+                                            text: (modelData.protocol || "smb").toUpperCase() + " · " + (modelData.username ? modelData.username + "@" : "") + modelData.server + (modelData.share ? "/" + modelData.share : "")
                                             color: theme.textMuted
                                             font.pixelSize: theme.fs(11)
                                             elide: Text.ElideMiddle
@@ -1779,8 +1793,203 @@ Item {
                         }
 
                         SettingCard {
-                            title: qsTr("SMB support")
-                            subtitle: qsTr("Shares are mounted with GVfs; passwords can be saved in the system keyring")
+                            title: qsTr("Remote mounts")
+                            subtitle: qsTr("SMB, SFTP and FTP shares are mounted with GVfs; passwords can be saved in the system keyring")
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: 10
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                text: qsTr("rclone Remotes")
+                                color: theme.textMain
+                                font.pixelSize: theme.fs(15)
+                                font.bold: true
+                            }
+                            LoafButton {
+                                text: qsTr("Refresh")
+                                icon: "arrow-clockwise"
+                                variant: "tonal"
+                                onClicked: core.refresh_rclone()
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            visible: !core.rclone_available()
+                            wrapMode: Text.Wrap
+                            color: theme.textMuted
+                            font.pixelSize: theme.fs(12)
+                            text: qsTr("Install rclone to mount cloud drives (Google Drive, OneDrive, S3, …). Configure remotes with “rclone config”, then mount them here.")
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            visible: core.rclone_available() && tabNetwork.rcloneRemotes.length === 0
+                            wrapMode: Text.Wrap
+                            color: theme.textMuted
+                            font.pixelSize: theme.fs(12)
+                            text: qsTr("No rclone remotes configured yet. Run “rclone config” in a terminal, then press Refresh.")
+                        }
+
+                        Repeater {
+                            model: tabNetwork.rcloneRemotes
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                implicitHeight: rcloneRow.implicitHeight + 28
+                                radius: theme.radiusL
+                                color: theme.surfaceContainer
+
+                                RowLayout {
+                                    id: rcloneRow
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 12
+                                    LoafIcon {
+                                        name: modelData.mounted ? "cloud" : "cloud-slash"
+                                        size: 20
+                                        color: modelData.mounted ? theme.primary : theme.textMuted
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        spacing: 2
+                                        Text {
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            text: modelData.name
+                                            color: theme.textMain
+                                            font.pixelSize: theme.fs(13)
+                                            font.bold: true
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            Layout.minimumWidth: 0
+                                            visible: modelData.mounted
+                                            text: modelData.path
+                                            color: theme.textMuted
+                                            font.pixelSize: theme.fs(11)
+                                            elide: Text.ElideMiddle
+                                        }
+                                    }
+                                    LoafButton {
+                                        text: modelData.mounted ? qsTr("Unmount") : qsTr("Mount")
+                                        icon: modelData.mounted ? "plug-slash" : "plug"
+                                        variant: modelData.mounted ? "tonal" : "filled"
+                                        onClicked: {
+                                            if (modelData.mounted)
+                                                core.rclone_unmount(modelData.name);
+                                            else
+                                                core.rclone_mount(modelData.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // DLNA media server status: rclone serve dlna runs in the
+                        // background; the page polls via refreshDlnaTimer so a
+                        // crash or external kill is reflected here.
+                        Timer {
+                            id: refreshDlnaTimer
+                            interval: 5000
+                            running: tabNetwork.shown
+                            repeat: true
+                            triggeredOnStart: true
+                            onTriggered: { try { core.refresh_dlna(); core.refresh_rclone(); } catch (e) {} }
+                        }
+                        SettingCard {
+                            title: qsTr("DLNA media server")
+                            subtitle: {
+                                try {
+                                    var s = JSON.parse(core.dlna_status_json || "{}");
+                                    if (s.running) return qsTr("Serving “%1” to TVs and players on your Wi-Fi").arg(s.dir);
+                                    return qsTr("Serve a folder to TVs, consoles and VLC on your Wi-Fi (needs rclone)");
+                                } catch (e) { return qsTr("Serve a folder to TVs and players on your Wi-Fi"); }
+                            }
+                            RowLayout {
+                                spacing: 10
+                                Rectangle {
+                                    height: 26
+                                    radius: theme.radiusFull
+                                    color: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainer : theme.surfaceContainerHighest; }
+                                        catch (e) { return theme.surfaceContainerHighest; }
+                                    }
+                                    width: dlnaStatusRow.implicitWidth + 18
+                                    RowLayout {
+                                        id: dlnaStatusRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        LoafIcon {
+                                            name: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? "check-circle" : "monitor-play"; }
+                                                catch (e) { return "monitor-play"; }
+                                            }
+                                            size: 14
+                                            color: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainerFg : theme.textMuted; }
+                                                catch (e) { return theme.textMuted; }
+                                            }
+                                        }
+                                        Text {
+                                            text: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? qsTr("Running") : qsTr("Stopped"); }
+                                                catch (e) { return qsTr("Stopped"); }
+                                            }
+                                            color: {
+                                                try { return JSON.parse(core.dlna_status_json || "{}").running ? theme.primaryContainerFg : theme.textMuted; }
+                                                catch (e) { return theme.textMuted; }
+                                            }
+                                            font.pixelSize: theme.fs(11)
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                LoafTextField {
+                                    Layout.preferredWidth: 260
+                                    readOnly: true
+                                    visible: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running; }
+                                        catch (e) { return false; }
+                                    }
+                                    text: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").url || ""; }
+                                        catch (e) { return ""; }
+                                    }
+                                    font.family: "monospace"
+                                }
+                                LoafButton {
+                                    text: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running ? qsTr("Stop") : qsTr("Stopped"); }
+                                        catch (e) { return qsTr("Stop"); }
+                                    }
+                                    icon: "stop"
+                                    variant: "danger"
+                                    visible: {
+                                        try { return JSON.parse(core.dlna_status_json || "{}").running; }
+                                        catch (e) { return false; }
+                                    }
+                                    onClicked: { core.dlna_stop(); core.refresh_dlna(); }
+                                }
+                            }
+                            Text {
+                                visible: !core.dlna_available()
+                                text: qsTr("Install rclone to enable DLNA (right-click a folder → Share → Serve media via DLNA).")
+                                color: theme.textMuted
+                                font.pixelSize: theme.fs(11)
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
                         }
                     }
                     ColumnLayout {

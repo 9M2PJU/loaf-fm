@@ -16,7 +16,10 @@ optdepends=('7zip: zip/7z/rar/iso and encrypted archives'
             'ffmpegthumbnailer: video thumbnails'
             'xdg-utils: open files with their default application'
             'libsecret: remember encrypted drive passphrases'
-            'polkit: Open as Administrator')
+            'polkit: Open as Administrator'
+            'gvfs-smb: connect to SMB/Windows shares'
+            'gvfs: connect to SFTP and FTP servers'
+            'rclone: mount cloud drives and serve media via DLNA')
 provides=('loaf-fm' 'loaf')
 conflicts=('loaf-fm' 'loaf')
 source=("$pkgname::git+https://github.com/m-uvex/loaf-fm.git#branch=main")
