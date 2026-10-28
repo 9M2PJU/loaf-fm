@@ -118,7 +118,7 @@ fn secret_tool() -> Option<PathBuf> {
     util::which("secret-tool")
 }
 
-fn split_server(value: &str) -> (&str, Option<u32>) {
+pub(crate) fn split_server(value: &str) -> (&str, Option<u32>) {
     let value = value.trim();
     if let Some(rest) = value.strip_prefix('[') {
         if let Some((host, tail)) = rest.split_once(']') {

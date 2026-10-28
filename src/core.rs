@@ -185,6 +185,11 @@ pub mod qobject {
         /// shared GTK bookmarks file) with the system's default handler.
         #[qinvokable]
         fn open_uri(self: Pin<&mut LoafCore>, uri: &QString);
+        /// Open a sidebar network bookmark (e.g. a GTK sftp:// bookmark).
+        /// Returns open:<local-path>, connect:<profile-id>, add:<prefill-json>
+        /// or external:<uri> for QML to act on.
+        #[qinvokable]
+        fn open_network_place(self: &LoafCore, uri: &QString, label: &QString) -> QString;
         #[qinvokable]
         fn quick_look(self: &LoafCore, path: &QString) -> QString;
         #[qinvokable]
@@ -513,6 +518,72 @@ fn places_config() -> PlacesConfig {
 
 fn save_places_config(c: &PlacesConfig) {
     state::set("placesConfig", &serde_json::to_string(c).unwrap_or_default());
+}
+
+/// What clicking a sidebar network bookmark should do.
+#[derive(Debug)]
+enum NetworkAction {
+    /// Browse the already-mounted folder.
+    Open(String),
+    /// Mount via the saved profile, then browse (see `smb_mounted`).
+    Connect(String),
+    /// No saved profile matches: prefill the Add dialog from the URI.
+    Add(String),
+    /// Not a mountable scheme (http://, …): hand to the system handler.
+    External(String),
+}
+
+/// Match a network URI (smb://, sftp://, ftp://) against saved remote
+/// profiles: open it if mounted, connect if a profile matches, otherwise
+/// return prefill JSON for the Add Network Share dialog.
+fn network_place_action(profiles: &[smb::Profile], uri: &str, label: &str) -> NetworkAction {
+    let Some((scheme, rest)) = uri.split_once("://") else {
+        return NetworkAction::External(uri.to_string());
+    };
+    let scheme = scheme.to_lowercase();
+    if scheme != "smb" && scheme != "sftp" && scheme != "ftp" {
+        return NetworkAction::External(uri.to_string());
+    }
+    // [user[:password]@]host[:port][/path]
+    let (authority, want_path) = match rest.split_once('/') {
+        Some((a, p)) => (a, p.trim().trim_matches('/').to_string()),
+        None => (rest, String::new()),
+    };
+    let (userinfo, hostport) = match authority.split_once('@') {
+        Some((u, h)) => (u, h),
+        None => ("", authority),
+    };
+    let username = userinfo.split(':').next().unwrap_or("").trim();
+    let (want_host, want_port) = smb::split_server(hostport);
+    for p in profiles {
+        if smb::protocol_of(p) != scheme {
+            continue;
+        }
+        let (host, port) = smb::split_server(&p.server);
+        if !host.eq_ignore_ascii_case(want_host) || port != want_port {
+            continue;
+        }
+        if !username.is_empty() && !p.username.trim().is_empty()
+            && !p.username.trim().eq_ignore_ascii_case(username)
+        {
+            continue;
+        }
+        if p.share.trim().trim_matches('/') != want_path {
+            continue;
+        }
+        if let Some(local) = smb::connected_path(p) {
+            return NetworkAction::Open(local.to_string_lossy().to_string());
+        }
+        return NetworkAction::Connect(p.id.clone());
+    }
+    let prefill = serde_json::json!({
+        "protocol": scheme,
+        "server": hostport,
+        "share": want_path,
+        "username": username,
+        "name": label,
+    });
+    NetworkAction::Add(prefill.to_string())
 }
 
 /// Sidebar entry for a non-file (network) GTK bookmark, e.g. a remote
@@ -1604,6 +1675,18 @@ impl qobject::LoafCore {
         if !launched {
             self.as_mut().notify(q("error"), q(&format!("No application can open “{}”", u)));
         }
+    }
+
+    /// Decide what clicking a network bookmark (smb://, sftp://, ftp://,
+    /// …) should do. Anything Loaf can't mount itself falls through to
+    /// the system's default application.
+    pub fn open_network_place(&self, uri: &QString, label: &QString) -> QString {
+        q(&match network_place_action(&smb::profiles(), &uri.to_string(), &label.to_string()) {
+            NetworkAction::Open(path) => format!("open:{}", path),
+            NetworkAction::Connect(id) => format!("connect:{}", id),
+            NetworkAction::Add(prefill) => format!("add:{}", prefill),
+            NetworkAction::External(uri) => format!("external:{}", uri),
+        })
     }
     pub fn quick_look(&self, path: &QString) -> QString {
         q(&serde_json::to_string(&info::quick_look(Path::new(&path.to_string()))).unwrap_or_else(|_| "{}".into()))
@@ -2722,6 +2805,47 @@ mod tests {
         assert!(network_place(&local).is_none());
         let junk = xdg::Bookmark { uri: "not a uri".to_string(), label: String::new() };
         assert!(network_place(&junk).is_none());
+    }
+
+    #[test]
+    fn network_place_action_matches_profiles() {
+        let profile = smb::Profile {
+            id: "nas".into(),
+            protocol: "sftp".into(),
+            name: "NAS".into(),
+            // TEST-NET-2: guaranteed unroutable, so never actually mounted.
+            server: "198.51.100.7".into(),
+            share: "".into(),
+            username: "pju".into(),
+            domain: "".into(),
+            remember: false,
+        };
+        let profiles = vec![profile];
+        // Exact match, not mounted here -> connect by profile id.
+        match network_place_action(&profiles, "sftp://pju@198.51.100.7/", "NAS-Kerkut") {
+            NetworkAction::Connect(id) => assert_eq!(id, "nas"),
+            other => panic!("expected Connect, got {:?}", other),
+        }
+        // Different path -> prefill the Add dialog, not a blind connect.
+        match network_place_action(&profiles, "sftp://pju@198.51.100.7/media", "Media") {
+            NetworkAction::Add(json) => {
+                let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(v["protocol"], "sftp");
+                assert_eq!(v["server"], "198.51.100.7");
+                assert_eq!(v["share"], "media");
+                assert_eq!(v["username"], "pju");
+            }
+            _ => panic!("expected Add"),
+        }
+        // Unknown server -> prefill; non-mountable scheme -> external.
+        assert!(matches!(
+            network_place_action(&profiles, "sftp://pju@other-nas/", "X"),
+            NetworkAction::Add(_)
+        ));
+        assert!(matches!(
+            network_place_action(&profiles, "https://nas.local/", "Web UI"),
+            NetworkAction::External(_)
+        ));
     }
 
     #[test]

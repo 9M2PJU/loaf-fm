@@ -55,7 +55,8 @@ fn sanitize(name: &str) -> String {
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
         .collect();
-    let clean = clean.trim_matches('.').trim();
+    // Never produce a hidden (dotfile) or empty mountpoint name.
+    let clean = clean.trim_matches(|c| c == '.' || c == '_').trim();
     if clean.is_empty() { "remote".to_string() } else { clean.to_string() }
 }
 

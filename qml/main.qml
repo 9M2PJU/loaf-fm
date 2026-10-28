@@ -1446,11 +1446,28 @@ ApplicationWindow {
                             core.connect_smb(place.profile_id, "", false);
                         return;
                     }
-                    // Network bookmarks (remote URIs): Loaf can't
-                    // browse them internally, so hand them to the system handler.
+                    // Network bookmarks (remote URIs): smb/sftp/ftp ones
+                    // open natively via saved profiles; anything else goes
+                    // to the system's default application.
                     if (place.kind === "network") {
-                        if (place.path)
-                            core.open_uri(place.path);
+                        if (place.path) {
+                            var action = core.open_network_place(place.path, place.name || "");
+                            if (action.indexOf("open:") === 0) {
+                                window.showFiles();
+                                searchInput.text = "";
+                                engine.set_path(action.slice(5));
+                            } else if (action.indexOf("connect:") === 0) {
+                                core.connect_smb(action.slice(8), "", false);
+                            } else if (action.indexOf("add:") === 0) {
+                                try {
+                                    window.openSmbEditor(JSON.parse(action.slice(4)));
+                                } catch (e) {
+                                    window.openSmbEditor({});
+                                }
+                            } else if (action.indexOf("external:") === 0) {
+                                core.open_uri(action.slice(9));
+                            }
+                        }
                         return;
                     }
                     if (inNewTab && place.path) {
