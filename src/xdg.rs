@@ -232,6 +232,61 @@ pub fn remove_bookmark(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Remove a bookmark by exact URI. Unlike [`remove_bookmark`] this also
+/// matches non-file entries (sftp://, smb://, …), so network shortcuts can
+/// be deleted from inside Loaf instead of another file manager.
+pub fn remove_bookmark_uri_in(list: &mut Vec<Bookmark>, uri: &str) -> bool {
+    let before = list.len();
+    list.retain(|b| b.uri != uri);
+    list.len() != before
+}
+
+pub fn remove_bookmark_uri(uri: &str) -> std::io::Result<()> {
+    let mut list = bookmarks();
+    if remove_bookmark_uri_in(&mut list, uri) {
+        save_bookmarks(&list)?;
+    }
+    Ok(())
+}
+
+pub fn rename_bookmark_uri_in(list: &mut Vec<Bookmark>, uri: &str, label: &str) -> bool {
+    let mut changed = false;
+    for b in list.iter_mut() {
+        if b.uri == uri {
+            b.label = label.trim().to_string();
+            changed = true;
+        }
+    }
+    changed
+}
+
+pub fn rename_bookmark_uri(uri: &str, label: &str) -> std::io::Result<()> {
+    let mut list = bookmarks();
+    if rename_bookmark_uri_in(&mut list, uri, label) {
+        save_bookmarks(&list)?;
+    }
+    Ok(())
+}
+
+/// Replace the bookmark `old_uri` with a new URI/label pair (renaming or
+/// repointing a network sidebar entry).
+pub fn replace_bookmark_uri(old_uri: &str, new_uri: &str, label: &str) -> std::io::Result<()> {
+    let mut list = bookmarks();
+    let new_uri = new_uri.trim();
+    let mut replaced = false;
+    for b in list.iter_mut() {
+        if b.uri == old_uri {
+            b.uri = new_uri.to_string();
+            b.label = label.trim().to_string();
+            replaced = true;
+        }
+    }
+    if !replaced && !new_uri.is_empty() {
+        list.push(Bookmark { uri: new_uri.to_string(), label: label.trim().to_string() });
+    }
+    save_bookmarks(&list)
+}
+
 pub fn rename_bookmark(path: &Path, label: &str) -> std::io::Result<()> {
     let mut list = bookmarks();
     for b in list.iter_mut() {
@@ -486,6 +541,20 @@ mod tests {
         assert_eq!(list[2].display_name(), "tmp");
         assert_eq!(list[1].path(), None);
         assert_eq!(format_bookmarks(&list), src);
+    }
+
+    #[test]
+    fn network_bookmarks_can_be_removed_and_renamed() {
+        let mut list = parse_bookmarks("file:///home/a\nsftp://pju@nas/ NAS\nsftp://pju@nas/media Media\n");
+        assert!(remove_bookmark_uri_in(&mut list, "sftp://pju@nas/"));
+        assert_eq!(list.len(), 2);
+        assert!(!remove_bookmark_uri_in(&mut list, "sftp://missing/"));
+        assert!(rename_bookmark_uri_in(&mut list, "sftp://pju@nas/media", "Films"));
+        assert_eq!(list[1].label, "Films");
+        assert_eq!(
+            format_bookmarks(&list),
+            "file:///home/a\nsftp://pju@nas/media Films\n"
+        );
     }
 
     #[test]

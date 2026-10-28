@@ -2559,11 +2559,11 @@ ApplicationWindow {
                 m.push({ text: qsTr("Open in New Tab"), icon: "tabs", action: function() { window.newTab(place.path); } });
             if (place.kind === "trash")
                 m.push({ text: qsTr("Empty Trash"), icon: "trash", danger: true, enabled: !core.trash_empty, action: function() { window.confirmEmptyTrash(); } });
-            if (place.kind === "place" || place.kind === "bookmark")
-                m.push({ text: qsTr("Rename / Change Folder…"), icon: "pencil-simple", action: function() { placeEdit.openFor(place); } });
+            if (place.kind === "place" || place.kind === "bookmark" || place.kind === "network")
+                m.push({ text: place.kind === "network" ? qsTr("Rename…") : qsTr("Rename / Change Folder…"), icon: "pencil-simple", action: function() { placeEdit.openFor(place); } });
             m.push({ text: qsTr("Move Up"), icon: "arrow-up", separatorBefore: true, enabled: idx > 0, action: function() { core.move_place(place.id, idx - 1); } });
             m.push({ text: qsTr("Move Down"), icon: "arrow-down", enabled: idx >= 0 && idx < all.length - 1, action: function() { core.move_place(place.id, idx + 1); } });
-            if (place.kind === "bookmark")
+            if (place.kind === "bookmark" || place.kind === "network")
                 m.push({ text: qsTr("Remove from Sidebar"), icon: "x", danger: true, separatorBefore: true, action: function() { core.remove_bookmark(place.path); } });
             else
                 m.push({ text: qsTr("Hide from Sidebar"), icon: "eye-slash", separatorBefore: true, action: function() { core.set_place_hidden(place.id, true); } });
@@ -2939,7 +2939,7 @@ ApplicationWindow {
         onOpened: { nameField.forceActiveFocus(); nameField.selectAll(); }
         Text { text: qsTr("Name"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
         LoafTextField { id: nameField; Layout.fillWidth: true; color: theme.textMain }
-        Text { text: qsTr("Folder"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
+        Text { text: placeEdit.place && placeEdit.place.kind === "network" ? qsTr("Address") : qsTr("Folder"); color: theme.textMuted; font.pixelSize: theme.fs(12) }
         LoafTextField {
             id: pathField
             Layout.fillWidth: true

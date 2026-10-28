@@ -950,12 +950,22 @@ impl qobject::LoafCore {
     }
 
     pub fn remove_bookmark(self: Pin<&mut Self>, path: &QString) {
-        let _ = xdg::remove_bookmark(Path::new(&path.to_string()));
+        let p = path.to_string();
+        if p.contains("://") {
+            let _ = xdg::remove_bookmark_uri(&p);
+        } else {
+            let _ = xdg::remove_bookmark(Path::new(&p));
+        }
         self.load_places();
     }
 
     pub fn rename_bookmark(self: Pin<&mut Self>, path: &QString, label: &QString) {
-        let _ = xdg::rename_bookmark(Path::new(&path.to_string()), &label.to_string());
+        let p = path.to_string();
+        if p.contains("://") {
+            let _ = xdg::rename_bookmark_uri(&p, &label.to_string());
+        } else {
+            let _ = xdg::rename_bookmark(Path::new(&p), &label.to_string());
+        }
         self.load_places();
     }
 
@@ -1008,6 +1018,17 @@ impl qobject::LoafCore {
     pub fn edit_place(mut self: Pin<&mut Self>, id: &QString, name: &QString, path: &QString) {
         let id = id.to_string();
         let path_s = path.to_string();
+        // Network bookmarks live in the shared GTK bookmarks file: rename
+        // or repoint the URI entry instead of touching Loaf's own config.
+        if let Some(uri) = id.strip_prefix("network:") {
+            if path_s.trim().is_empty() || !path_s.contains("://") {
+                self.as_mut().notify(q("error"), q("Enter a valid server address, e.g. sftp://nas/media"));
+                return;
+            }
+            let _ = xdg::replace_bookmark_uri(uri, path_s.trim(), &name.to_string());
+            self.load_places();
+            return;
+        }
         if !Path::new(&path_s).is_dir() {
             self.as_mut().notify(q("error"), q("That folder doesn't exist"));
             return;
