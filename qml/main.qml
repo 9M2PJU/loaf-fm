@@ -1741,8 +1741,12 @@ ApplicationWindow {
                         searchInput.text = "";
                         if (place.connected && place.path)
                             engine.set_path(place.path);
-                        else
+                        else if (place.profile_id)
                             core.connect_network(place.profile_id, "", false);
+                        else if (place.path)
+                            // Remote bookmark (e.g. sftp://) has no profile:
+                            // hand it to the system handler.
+                            core.open_uri(place.path);
                         return;
                     }
                     if (place.kind === "smb-discovery") {
@@ -2802,12 +2806,16 @@ ApplicationWindow {
             if (place.kind === "network" || place.kind === "smb") {
                 if (place.path && place.connected)
                     m.push({ text: qsTr("Open in New Tab"), icon: "tabs", action: function() { window.newTab(place.path); } });
-                if (!place.connected)
+                if (!place.connected && place.profile_id)
                     m.push({ text: qsTr("Connect"), icon: "plug", action: function() { core.connect_network(place.profile_id, "", false); } });
-                if (place.connected)
+                if (place.connected && place.profile_id)
                     m.push({ text: qsTr("Disconnect"), icon: "plug-slash", action: function() { core.disconnect_network(place.profile_id); } });
-                m.push({ text: qsTr("Edit Drive…"), icon: "pencil-simple", separatorBefore: true, action: function() { window.openNetworkEditor(place); } });
-                m.push({ text: qsTr("Remove Drive"), icon: "x", danger: true, action: function() { window.removeNetworkDrive(place.profile_id, place.name); } });
+                if (place.profile_id) {
+                    m.push({ text: qsTr("Edit Drive…"), icon: "pencil-simple", separatorBefore: true, action: function() { window.openNetworkEditor(place); } });
+                    m.push({ text: qsTr("Remove Drive"), icon: "x", danger: true, action: function() { window.removeNetworkDrive(place.profile_id, place.name); } });
+                } else if (place.path) {
+                    m.push({ text: qsTr("Open"), icon: "arrow-square-out", separatorBefore: true, action: function() { core.open_uri(place.path); } });
+                }
                 m.push({ text: qsTr("Move Up"), icon: "arrow-up", separatorBefore: true, enabled: idx > 0, action: function() { core.move_place(place.id, idx - 1); } });
                 m.push({ text: qsTr("Move Down"), icon: "arrow-down", enabled: idx >= 0 && idx < all.length - 1, action: function() { core.move_place(place.id, idx + 1); } });
                 m.push({ text: qsTr("Add Network Share…"), icon: "plus", separatorBefore: true, action: function() { window.openNetworkEditor({}); } });
